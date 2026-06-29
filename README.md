@@ -1,3 +1,3 @@
-# pixsquare-loader
+# pixquare-loader
 
 Crate for loading pixsquare files.
