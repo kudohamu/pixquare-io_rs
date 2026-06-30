@@ -1,14 +1,26 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+mod combinator;
+
+/// The pixquare(.px) file data.
+#[derive(Debug)]
+pub struct PixquareFile {}
+
+impl PixquareFile {
+  /// Load a .px file from a byte slice.
+  pub fn load(_file_data: &[u8]) -> Result<Self, ()> {
+    Ok(Self {})
+  }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+  use super::*;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+  #[test]
+  fn load_file_from_slice() {
+    let path = "assets/fixtures/simple.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = PixquareFile::load(&file_data);
+
+    assert!(file.is_ok());
+  }
 }
