@@ -9,7 +9,10 @@ use nom::{
   number::complete::{le_i32, le_u8, le_u16, le_u64},
 };
 
-use crate::{composite_type::Coordinate, primitive_type::OptionSetU8};
+use crate::{
+  composite_type::{Coordinate, Corners},
+  primitive_type::OptionSet,
+};
 
 /// Combinator for UTF8 data of a string.
 pub fn dumb_string<'a>(
@@ -26,10 +29,10 @@ pub fn string(input: &[u8]) -> IResult<&[u8], &str> {
 }
 
 /// Combinator(complete version) for OptionSet<UInt8>.
-pub fn option_set_u8(input: &[u8]) -> IResult<&[u8], OptionSetU8> {
+pub fn option_set_u8(input: &[u8]) -> IResult<&[u8], OptionSet<u8>> {
   let (input, v) = le_u8(input)?;
 
-  Ok((input, OptionSetU8::new(v)))
+  Ok((input, OptionSet::new(v)))
 }
 
 /// Combinator for n consecutive value of type.
@@ -63,6 +66,13 @@ pub fn coordinator(input: &[u8]) -> IResult<&[u8], Coordinate> {
   let (input, (x, y)) = (le_i32, le_i32).parse(input)?;
 
   Ok((input, Coordinate { x, y }))
+}
+
+/// Combinator(complete version) for corners.
+pub fn corners(input: &[u8]) -> IResult<&[u8], Corners> {
+  let (input, option_set) = option_set_u8(input)?;
+
+  Ok((input, option_set.into()))
 }
 
 #[cfg(test)]
