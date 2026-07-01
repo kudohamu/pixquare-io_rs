@@ -14,6 +14,13 @@ pub struct Size {
   pub height: u32,
 }
 
+/// https://docs.pixquare.art/pixquare-file/binary-specs#rect
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Rect {
+  pub origin: Coordinate,
+  pub size: Size,
+}
+
 /// https://docs.pixquare.art/pixquare-file/binary-specs#corners
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Corners {

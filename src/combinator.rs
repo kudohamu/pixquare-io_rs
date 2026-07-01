@@ -10,7 +10,7 @@ use nom::{
 };
 
 use crate::{
-  composite_type::{Coordinate, Corners, Size},
+  composite_type::{Coordinate, Corners, Rect, Size},
   primitive_type::OptionSet,
 };
 
@@ -62,7 +62,7 @@ where
 }
 
 /// Combinator(complete version) for coordinate.
-pub fn coordinator(input: &[u8]) -> IResult<&[u8], Coordinate> {
+pub fn coordinate(input: &[u8]) -> IResult<&[u8], Coordinate> {
   let (input, (x, y)) = (le_i32, le_i32).parse(input)?;
 
   Ok((input, Coordinate { x, y }))
@@ -73,6 +73,13 @@ pub fn size(input: &[u8]) -> IResult<&[u8], Size> {
   let (input, (width, height)) = (le_u32, le_u32).parse(input)?;
 
   Ok((input, Size { width, height }))
+}
+
+/// Combinator(complete version) for rect.
+pub fn rect(input: &[u8]) -> IResult<&[u8], Rect> {
+  let (input, (origin, size)) = (coordinate, size).parse(input)?;
+
+  Ok((input, Rect { origin, size }))
 }
 
 /// Combinator(complete version) for corners.
