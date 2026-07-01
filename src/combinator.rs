@@ -6,11 +6,11 @@ use nom::{
   combinator::map_res,
   error::Error,
   multi::count,
-  number::complete::{le_i32, le_u8, le_u16, le_u64},
+  number::complete::{le_i32, le_u8, le_u16, le_u32, le_u64},
 };
 
 use crate::{
-  composite_type::{Coordinate, Corners},
+  composite_type::{Coordinate, Corners, Size},
   primitive_type::OptionSet,
 };
 
@@ -66,6 +66,13 @@ pub fn coordinator(input: &[u8]) -> IResult<&[u8], Coordinate> {
   let (input, (x, y)) = (le_i32, le_i32).parse(input)?;
 
   Ok((input, Coordinate { x, y }))
+}
+
+/// Combinator(complete version) for size.
+pub fn size(input: &[u8]) -> IResult<&[u8], Size> {
+  let (input, (width, height)) = (le_u32, le_u32).parse(input)?;
+
+  Ok((input, Size { width, height }))
 }
 
 /// Combinator(complete version) for corners.

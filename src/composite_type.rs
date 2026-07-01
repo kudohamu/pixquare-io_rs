@@ -7,6 +7,13 @@ pub struct Coordinate {
   pub y: i32,
 }
 
+/// https://docs.pixquare.art/pixquare-file/binary-specs#size
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Size {
+  pub width: u32,
+  pub height: u32,
+}
+
 /// https://docs.pixquare.art/pixquare-file/binary-specs#corners
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Corners {
