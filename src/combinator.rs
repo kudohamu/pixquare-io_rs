@@ -1,23 +1,24 @@
-use std::str::{Utf8Error, from_utf8};
+use std::str::from_utf8;
 
 use nom::{
   IResult, Parser,
   bytes::take,
   combinator::map_res,
-  error::{FromExternalError, ParseError},
+  error::Error,
   multi::count,
-  number::complete::{le_u16, le_u64},
+  number::complete::{le_i32, le_u16, le_u64},
 };
 
+use crate::composite_type::Coordinate;
+
 /// Combinator for UTF8 data of a string.
-pub fn dumb_string<'a, E>(len: usize) -> impl Parser<&'a [u8], Output = &'a str, Error = E>
-where
-  E: ParseError<&'a [u8]> + FromExternalError<&'a [u8], Utf8Error>,
-{
+pub fn dumb_string<'a>(
+  len: usize,
+) -> impl Parser<&'a [u8], Output = &'a str, Error = Error<&'a [u8]>> {
   map_res(take(len), |bytes| from_utf8(bytes))
 }
 
-/// Combinator(Complete version) for UTF8 string of .px binary spec.
+/// Combinator(complete version) for UTF8 string of .px binary spec.
 pub fn string(input: &[u8]) -> IResult<&[u8], &str> {
   le_u16
     .flat_map(|len| dumb_string(len as usize))
@@ -48,4 +49,41 @@ where
   F: Parser<&'a [u8]> + Clone,
 {
   le_u64.flat_map(move |len| type_n(parser.clone(), len as usize))
+}
+
+/// Combinator(complete version) for coordinate.
+pub fn coordinator(input: &[u8]) -> IResult<&[u8], Coordinate> {
+  let (input, (x, y)) = (le_i32, le_i32).parse(input)?;
+
+  Ok((input, Coordinate { x, y }))
+}
+
+#[cfg(test)]
+mod tests {
+  use nom::{Err::Incomplete, Parser, error::ErrorKind};
+
+  use crate::combinator::dumb_string;
+
+  #[test]
+  fn test_dumb_string() {
+    assert_eq!(
+      dumb_string(4).parse(b"RustRemaining"),
+      Ok((&b"Remaining"[..], "Rust"))
+    );
+    assert_eq!(
+      dumb_string(0).parse(b"RustRemaining"),
+      Ok((&b"RustRemaining"[..], ""))
+    );
+    assert_eq!(
+      dumb_string(4).parse(b"Rus"),
+      Err(Incomplete(nom::Needed::new(1)))
+    );
+    assert_eq!(
+      dumb_string(4).parse(b"\xff\xff\xff\xffRemaining"),
+      Err(nom::Err::Error(nom::error::Error::new(
+        &b"\xff\xff\xff\xffRemaining"[..],
+        ErrorKind::MapRes
+      )))
+    )
+  }
 }
