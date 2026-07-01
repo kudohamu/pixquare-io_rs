@@ -6,10 +6,10 @@ use nom::{
   combinator::map_res,
   error::Error,
   multi::count,
-  number::complete::{le_i32, le_u16, le_u64},
+  number::complete::{le_i32, le_u8, le_u16, le_u64},
 };
 
-use crate::composite_type::Coordinate;
+use crate::{composite_type::Coordinate, primitive_type::OptionSetU8};
 
 /// Combinator for UTF8 data of a string.
 pub fn dumb_string<'a>(
@@ -23,6 +23,13 @@ pub fn string(input: &[u8]) -> IResult<&[u8], &str> {
   le_u16
     .flat_map(|len| dumb_string(len as usize))
     .parse(input)
+}
+
+/// Combinator(complete version) for OptionSet<UInt8>.
+pub fn option_set_u8(input: &[u8]) -> IResult<&[u8], OptionSetU8> {
+  let (input, v) = le_u8(input)?;
+
+  Ok((input, OptionSetU8::new(v)))
 }
 
 /// Combinator for n consecutive value of type.
