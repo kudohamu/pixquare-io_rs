@@ -10,7 +10,7 @@ use nom::{
 };
 
 use crate::{
-  composite_type::{Coordinate, Corners, Rect, Size},
+  composite_type::{ArgbColor, BlendMode, Coordinate, Corners, Rect, Size},
   primitive_type::OptionSet,
 };
 
@@ -82,11 +82,23 @@ pub fn rect(input: &[u8]) -> IResult<&[u8], Rect> {
   Ok((input, Rect { origin, size }))
 }
 
+/// Combinator(complete version) for ARGBColor.
+pub fn argb_color(input: &[u8]) -> IResult<&[u8], ArgbColor> {
+  let (input, (r, g, b, a)) = (le_u8, le_u8, le_u8, le_u8).parse(input)?;
+
+  Ok((input, ArgbColor { r, g, b, a }))
+}
+
 /// Combinator(complete version) for corners.
 pub fn corners(input: &[u8]) -> IResult<&[u8], Corners> {
   let (input, option_set) = option_set_u8(input)?;
 
   Ok((input, option_set.into()))
+}
+
+/// Combinator(complete version) for BlendMode.
+pub fn blend_mode(input: &[u8]) -> IResult<&[u8], BlendMode> {
+  map_res(le_u16, |v| BlendMode::from_u16(v)).parse(input)
 }
 
 #[cfg(test)]

@@ -1,6 +1,7 @@
 mod combinator;
-mod composite_type;
-mod primitive_type;
+pub mod composite_type;
+pub mod error;
+pub mod primitive_type;
 
 /// The pixquare(.px) file data.
 #[derive(Debug)]
