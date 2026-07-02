@@ -104,3 +104,146 @@ impl TryFrom<u16> for BlendMode {
     }
   }
 }
+
+/// Type of custom data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CustomDataType {
+  String,
+}
+
+impl TryFrom<u8> for CustomDataType {
+  type Error = Error;
+
+  fn try_from(v: u8) -> Result<Self, Self::Error> {
+    match v {
+      0 => Ok(Self::String),
+      _ => Err(Error::InvalidCustomDataType),
+    }
+  }
+}
+
+/// Type of Fx.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FxType {
+  ColorOverlay,
+  Outline,
+  AntiAliasing,
+  PatternOverlay,
+}
+
+impl TryFrom<u8> for FxType {
+  type Error = Error;
+
+  fn try_from(v: u8) -> Result<Self, Self::Error> {
+    match v {
+      0 => Ok(Self::ColorOverlay),
+      1 => Ok(Self::Outline),
+      2 => Ok(Self::AntiAliasing),
+      3 => Ok(Self::PatternOverlay),
+      _ => Err(Error::InvalidFxType),
+    }
+  }
+}
+
+/// Type of Entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntryType {
+  RegularLayer,
+  Group,
+  ReferenceLayer,
+  TilemapLayer,
+}
+
+impl TryFrom<u8> for EntryType {
+  type Error = Error;
+
+  fn try_from(v: u8) -> Result<Self, Self::Error> {
+    match v {
+      0 => Ok(Self::RegularLayer),
+      1 => Ok(Self::Group),
+      2 => Ok(Self::ReferenceLayer),
+      3 => Ok(Self::TilemapLayer),
+      _ => Err(Error::InvalidEntryType),
+    }
+  }
+}
+
+/// Type of GuideLine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GuideLineType {
+  Grid,
+  Isometric,
+  Perspective,
+}
+
+impl TryFrom<u8> for GuideLineType {
+  type Error = Error;
+
+  fn try_from(v: u8) -> Result<Self, Self::Error> {
+    match v {
+      0 => Ok(Self::Grid),
+      1 => Ok(Self::Isometric),
+      2 => Ok(Self::Perspective),
+      _ => Err(Error::InvalidGuideLineType),
+    }
+  }
+}
+
+/// Type of GuideLine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProcessorType {
+  Crt,
+  Vignette,
+  Bloom,
+  RoundPixel,
+}
+
+impl TryFrom<u8> for ProcessorType {
+  type Error = Error;
+
+  fn try_from(v: u8) -> Result<Self, Self::Error> {
+    match v {
+      0 => Ok(Self::Crt),
+      1 => Ok(Self::Vignette),
+      2 => Ok(Self::Bloom),
+      3 => Ok(Self::RoundPixel),
+      _ => Err(Error::InvalidProcessorType),
+    }
+  }
+}
+
+/// Type of Modifier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModifierType {
+  AnimationSpeedMultiplier,
+}
+
+impl TryFrom<u8> for ModifierType {
+  type Error = Error;
+
+  fn try_from(v: u8) -> Result<Self, Self::Error> {
+    match v {
+      0 => Ok(Self::AnimationSpeedMultiplier),
+      _ => Err(Error::InvalidModifierType),
+    }
+  }
+}
+
+/// Type of Organization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OrganizationType {
+  Packed,
+  Anywhere,
+}
+
+impl TryFrom<u8> for OrganizationType {
+  type Error = Error;
+
+  fn try_from(v: u8) -> Result<Self, Self::Error> {
+    match v {
+      0 => Ok(Self::Packed),
+      1 => Ok(Self::Anywhere),
+      _ => Err(Error::InvalidOrganizationType),
+    }
+  }
+}
