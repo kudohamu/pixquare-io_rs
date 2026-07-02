@@ -79,8 +79,10 @@ pub enum BlendMode {
   Luminosity,
 }
 
-impl BlendMode {
-  pub(crate) fn from_u16(v: u16) -> Result<Self, Error> {
+impl TryFrom<u16> for BlendMode {
+  type Error = Error;
+
+  fn try_from(v: u16) -> Result<Self, Self::Error> {
     match v {
       0 => Ok(Self::Normal),
       1 => Ok(Self::Multiply),

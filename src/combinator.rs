@@ -98,7 +98,7 @@ pub fn corners(input: &[u8]) -> IResult<&[u8], Corners> {
 
 /// Combinator(complete version) for BlendMode.
 pub fn blend_mode(input: &[u8]) -> IResult<&[u8], BlendMode> {
-  map_res(le_u16, |v| BlendMode::from_u16(v)).parse(input)
+  map_res(le_u16, |v| v.try_into()).parse(input)
 }
 
 #[cfg(test)]
