@@ -1,8 +1,9 @@
 use std::str::from_utf8;
 
+use half::f16;
 use nom::{
   IResult, Parser,
-  bytes::take,
+  bytes::complete::take,
   combinator::map_res,
   error::Error,
   multi::count,
@@ -26,6 +27,16 @@ pub fn string(input: &[u8]) -> IResult<&[u8], &str> {
   le_u16
     .flat_map(|len| dumb_string(len as usize))
     .parse(input)
+}
+
+/// Combinator(complete version) for 16-bit float.
+pub fn float16(input: &[u8]) -> IResult<&[u8], f16> {
+  le_u16.map(|bits| f16::from_bits(bits)).parse(input)
+}
+
+/// Combinator(complete version) for a boolean value, 1 byte.
+pub fn bool(input: &[u8]) -> IResult<&[u8], bool> {
+  le_u8.map(|val| val != 0).parse(input)
 }
 
 /// Combinator(complete version) for OptionSet<UInt8>.
@@ -103,7 +114,7 @@ pub fn blend_mode(input: &[u8]) -> IResult<&[u8], BlendMode> {
 
 #[cfg(test)]
 mod tests {
-  use nom::{Err::Incomplete, Parser, error::ErrorKind};
+  use nom::{Parser, error::ErrorKind};
 
   use crate::combinator::dumb_string;
 
@@ -119,7 +130,10 @@ mod tests {
     );
     assert_eq!(
       dumb_string(4).parse(b"Rus"),
-      Err(Incomplete(nom::Needed::new(1)))
+      Err(nom::Err::Error(nom::error::Error::new(
+        &b"Rus"[..],
+        ErrorKind::Eof,
+      )))
     );
     assert_eq!(
       dumb_string(4).parse(b"\xff\xff\xff\xffRemaining"),

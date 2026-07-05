@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 nom = "8.0.0"
 strum = { version = "0.28", features = ["derive"] }
+half = "2.7.1"

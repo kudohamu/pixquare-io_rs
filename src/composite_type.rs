@@ -80,7 +80,7 @@ pub enum BlendMode {
 }
 
 impl TryFrom<u16> for BlendMode {
-  type Error = Error;
+  type Error = Error<'static>;
 
   fn try_from(v: u16) -> Result<Self, Self::Error> {
     match v {
@@ -112,7 +112,7 @@ pub enum CustomDataType {
 }
 
 impl TryFrom<u8> for CustomDataType {
-  type Error = Error;
+  type Error = Error<'static>;
 
   fn try_from(v: u8) -> Result<Self, Self::Error> {
     match v {
@@ -132,7 +132,7 @@ pub enum FxType {
 }
 
 impl TryFrom<u8> for FxType {
-  type Error = Error;
+  type Error = Error<'static>;
 
   fn try_from(v: u8) -> Result<Self, Self::Error> {
     match v {
@@ -155,7 +155,7 @@ pub enum EntryType {
 }
 
 impl TryFrom<u8> for EntryType {
-  type Error = Error;
+  type Error = Error<'static>;
 
   fn try_from(v: u8) -> Result<Self, Self::Error> {
     match v {
@@ -177,7 +177,7 @@ pub enum GuideLineType {
 }
 
 impl TryFrom<u8> for GuideLineType {
-  type Error = Error;
+  type Error = Error<'static>;
 
   fn try_from(v: u8) -> Result<Self, Self::Error> {
     match v {
@@ -199,7 +199,7 @@ pub enum ProcessorType {
 }
 
 impl TryFrom<u8> for ProcessorType {
-  type Error = Error;
+  type Error = Error<'static>;
 
   fn try_from(v: u8) -> Result<Self, Self::Error> {
     match v {
@@ -219,7 +219,7 @@ pub enum ModifierType {
 }
 
 impl TryFrom<u8> for ModifierType {
-  type Error = Error;
+  type Error = Error<'static>;
 
   fn try_from(v: u8) -> Result<Self, Self::Error> {
     match v {
@@ -237,7 +237,7 @@ pub enum OrganizationType {
 }
 
 impl TryFrom<u8> for OrganizationType {
-  type Error = Error;
+  type Error = Error<'static>;
 
   fn try_from(v: u8) -> Result<Self, Self::Error> {
     match v {
