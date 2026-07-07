@@ -30,6 +30,24 @@ pub struct ArgbColor {
   pub a: u8,
 }
 
+impl TryFrom<&[u8]> for ArgbColor {
+  type Error = Error<'static>;
+
+  fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+    let r = value.get(0).ok_or_else(|| Error::InvalidArgbColorFormat)?;
+    let g = value.get(0).ok_or_else(|| Error::InvalidArgbColorFormat)?;
+    let b = value.get(0).ok_or_else(|| Error::InvalidArgbColorFormat)?;
+    let a = value.get(0).ok_or_else(|| Error::InvalidArgbColorFormat)?;
+
+    Ok(Self {
+      r: *r,
+      g: *g,
+      b: *b,
+      a: *a,
+    })
+  }
+}
+
 /// https://docs.pixquare.art/pixquare-file/binary-specs#corners
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Corners {
@@ -138,8 +156,8 @@ impl TryFrom<u8> for FxType {
     match v {
       0 => Ok(Self::ColorOverlay),
       1 => Ok(Self::Outline),
-      2 => Ok(Self::AntiAliasing),
-      3 => Ok(Self::PatternOverlay),
+      3 => Ok(Self::AntiAliasing),
+      4 => Ok(Self::PatternOverlay),
       _ => Err(Error::InvalidFxType),
     }
   }

@@ -3,6 +3,8 @@ use std::{fmt::Display, str::Utf8Error};
 /// Represent error in pixquare-loader.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error<'a> {
+  /// Invalid binary array or value of ArgbColor.
+  InvalidArgbColorFormat,
   /// Unknown value of BlendMode.
   InvalidBlendMode,
   /// Unknown value of data type of CustomData
@@ -32,6 +34,7 @@ pub enum Error<'a> {
 impl Display for Error<'_> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
+      Self::InvalidArgbColorFormat => write!(f, "invalid binary array or value of ArgbColor"),
       Self::InvalidBlendMode => write!(f, "unknown value of BlendMode"),
       Self::InvalidCustomDataType => write!(f, "unknown data type value of CustomData"),
       Self::InvalidFxType => write!(f, "unknown value of Fx Type"),
