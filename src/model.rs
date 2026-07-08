@@ -1,19 +1,19 @@
 use half::f16;
 use nom::{
-  IResult, Parser,
+  Parser,
   bytes::take,
   combinator::map_res,
-  multi::many0,
+  error::ErrorKind,
   number::complete::{le_f32, le_u8, le_u16, le_u32, le_u64},
 };
 
 use crate::{
   combinator::{
-    argb_color, array_type, blend_mode, bool, corners, dumb_string, float16, option_set_u8, size,
-    string,
+    argb_color, array_type, blend_mode, bool, compressed_colors, corners, dumb_string, float16,
+    option_set_u8, size, string,
   },
   composite_type::{ArgbColor, BlendMode, Corners, CustomDataType, EntryType, FxType, Size},
-  error::Error,
+  error::{PQResult, ParseError},
   primitive_type::OptionSet,
 };
 
@@ -28,7 +28,7 @@ struct CustomDataHeader {
 }
 
 impl CustomDataHeader {
-  fn parse(input: &[u8]) -> IResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (rest, input) = take(16usize).parse(input)?;
 
     let (_input, (data_size, data_type)) =
@@ -52,7 +52,7 @@ pub enum CustomData {
 }
 
 impl CustomData {
-  fn parse(input: &[u8]) -> IResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (input, header) = CustomDataHeader::parse(input)?;
 
     match header.data_type {
@@ -62,6 +62,68 @@ impl CustomData {
         Ok((input, Self::String(str.to_string())))
       }
     }
+  }
+}
+
+/// Header data of FrameContent.
+/// https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes
+#[derive(Debug)]
+struct FrameContentHeader {
+  /// Size of this model.
+  data_size: u64,
+  /// ID length.
+  id_len: u8,
+  /// Uncompressed color data length.
+  /// width x height x pixel length (4 for RGBA and 1 for indexed).
+  color_len: u32,
+  /// Color data length.
+  compressed_color_len: u32,
+  /// Backward compatibility. Always `0b00000001` .
+  _compat: OptionSet<u8>,
+}
+
+impl FrameContentHeader {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (rest, input) = take(32usize).parse(input)?;
+
+    let (_input, (data_size, id_len, color_len, compressed_color_len, _compat)) =
+      (le_u64, le_u8, le_u32, le_u32, option_set_u8).parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        data_size,
+        id_len,
+        color_len,
+        compressed_color_len,
+        _compat,
+      },
+    ))
+  }
+}
+
+/// The color data of a cel.
+/// https://docs.pixquare.art/pixquare-file/binary-specs#content-1
+#[derive(Debug, Clone)]
+pub struct FrameContent {
+  id: String,
+  colors: Vec<ArgbColor>,
+}
+
+impl FrameContent {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (input, header) = FrameContentHeader::parse(input)?;
+
+    let (input, id) = dumb_string(header.id_len as usize).parse(input)?;
+    let (input, colors) = compressed_colors(header.compressed_color_len as usize).parse(input)?;
+
+    Ok((
+      input,
+      Self {
+        id: id.to_string(),
+        colors,
+      },
+    ))
   }
 }
 
@@ -78,7 +140,7 @@ struct FrameHeader {
 }
 
 impl FrameHeader {
-  fn parse(input: &[u8]) -> IResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (rest, input) = take(32usize).parse(input)?;
 
     let (_input, (data_size, id_len, content_len)) = (le_u32, le_u8, le_u8).parse(input)?;
@@ -121,7 +183,7 @@ pub struct Frame {
 }
 
 impl Frame {
-  fn parse(input: &[u8]) -> IResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (input, header) = FrameHeader::parse(input)?;
 
     let (input, (id, duration, selected, content_id, opacity, z_index, custom_datas)) = (
@@ -161,7 +223,7 @@ struct FxHeader {
 }
 
 impl FxHeader {
-  fn parse(input: &[u8]) -> IResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (rest, input) = take(16usize).parse(input)?;
 
     let (_input, (data_size, fx_type)) = (le_u64, le_u8.map_res(|b| b.try_into())).parse(input)?;
@@ -179,7 +241,7 @@ pub struct FxColorOverlayContent {
 }
 
 impl FxColorOverlayContent {
-  fn parse(input: &[u8]) -> IResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     (bool, argb_color, blend_mode)
       .map(|(enabled, color, blend_mode)| Self {
         enabled,
@@ -205,7 +267,7 @@ pub struct FxOutlineContent {
 }
 
 impl FxOutlineContent {
-  fn parse(input: &[u8]) -> IResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     (
       bool,
       corners,
@@ -238,7 +300,7 @@ pub struct FxAntiAliasingContent {
 }
 
 impl FxAntiAliasingContent {
-  fn parse(input: &[u8]) -> IResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     (bool, array_type(corners), le_f32)
       .map(|(enabled, corners, intensity)| Self {
         enabled,
@@ -260,7 +322,7 @@ pub struct FxPatternOverlaryContent {
 }
 
 impl FxPatternOverlaryContent {
-  fn parse(input: &[u8]) -> IResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     (
       bool,
       array_type(le_u8).map_res(|data| data.chunks(4).map(|chunk| chunk.try_into()).collect()),
@@ -292,7 +354,7 @@ pub enum Fx {
 }
 
 impl Fx {
-  fn parse(input: &[u8]) -> IResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (input, header) = FxHeader::parse(input)?;
 
     match header.fx_type {
@@ -331,7 +393,7 @@ struct EntryHeader {
 }
 
 impl EntryHeader {
-  fn parse(input: &[u8]) -> IResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (rest, input) = take(16usize).parse(input)?;
 
     let (_input, (data_size, entry_type)) =
@@ -359,7 +421,7 @@ pub struct Entry {
 }
 
 impl Entry {
-  fn parse(input: &[u8]) -> IResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (input, header) = EntryHeader::parse(input)?;
 
     let (rest, input) = take(header.data_size).parse(input)?;
@@ -391,7 +453,7 @@ struct GroupHeader {
 }
 
 impl GroupHeader {
-  fn parse(input: &[u8]) -> IResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (rest, input) = take(32usize).parse(input)?;
 
     let (_input, (data_size, id_len, name_len, _compat)) =
@@ -441,7 +503,7 @@ pub struct Group {
 }
 
 impl Group {
-  fn parse(input: &[u8]) -> IResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (input, header) = GroupHeader::parse(input)?;
 
     let (rest, input) = take(header.data_size).parse(input)?;
@@ -508,7 +570,7 @@ struct LayerHeader {
 }
 
 impl LayerHeader {
-  fn parse(input: &[u8]) -> IResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (rest, input) = take(32usize).parse(input)?;
 
     let (_input, (data_size, id_len, name_len, _compat)) =
@@ -563,7 +625,7 @@ pub struct Layer {
 }
 
 impl Layer {
-  fn parse(input: &[u8]) -> IResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (input, header) = LayerHeader::parse(input)?;
 
     let (
@@ -637,7 +699,7 @@ struct ArtworkHeader {
 }
 
 impl ArtworkHeader {
-  fn parse(input: &[u8]) -> IResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (rest, input) = take(64usize).parse(input)?;
     let (input, file_size) = le_u64(input)?;
     let (input, id_len) = le_u8(input)?;
@@ -668,31 +730,29 @@ pub struct Artwork {
   pub entries: Vec<Entry>,
   pub groups: Vec<Group>,
   pub layers: Vec<Layer>,
+  pub frame_contents: Vec<FrameContent>,
 }
 
 impl<'a> Artwork {
-  pub fn read(buf: &'a [u8]) -> Result<Self, Error<'a>> {
-    let result = Self::parse(&buf).map_err(|e| match e {
-      nom::Err::Error(e) => e.into(),
-      nom::Err::Incomplete(e) => e.into(),
-      nom::Err::Failure(_) => Error::NomFailure,
-    });
+  pub fn read(buf: &'a [u8]) -> Result<Self, ParseError<&'a [u8]>> {
+    let (_rest, artwork) = Self::parse(buf).map_err(|nom_err| match nom_err {
+      nom::Err::Error(e) | nom::Err::Failure(e) => e,
+      nom::Err::Incomplete(_) => ParseError::Nom(buf, ErrorKind::Eof),
+    })?;
 
-    match result {
-      Ok((_rest, artwork)) => Ok(artwork),
-      Err(e) => Err(e),
-    }
+    Ok(artwork)
   }
 
-  fn parse(input: &[u8]) -> IResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (input, header) = ArtworkHeader::parse(input)?;
 
-    let (input, (id, canvas_size, entries, groups, layers)) = (
+    let (input, (id, canvas_size, entries, groups, layers, frame_contents)) = (
       dumb_string(header.id_len as usize),
       size,
       array_type(Entry::parse),
       array_type(Group::parse),
       array_type(Layer::parse),
+      array_type(FrameContent::parse),
     )
       .parse(input)?;
 
@@ -704,6 +764,7 @@ impl<'a> Artwork {
         entries,
         groups,
         layers,
+        frame_contents,
       },
     ))
   }

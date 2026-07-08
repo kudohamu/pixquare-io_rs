@@ -1,8 +1,13 @@
-use std::{fmt::Display, str::Utf8Error};
+use std::{
+  fmt::{Debug, Display},
+  str::Utf8Error,
+};
+
+use nom::error::{ErrorKind, FromExternalError};
 
 /// Represent error in pixquare-loader.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Error<'a> {
+pub enum ParseError<I> {
   /// Invalid binary array or value of ArgbColor.
   InvalidArgbColorFormat,
   /// Unknown value of BlendMode.
@@ -23,15 +28,12 @@ pub enum Error<'a> {
   InvalidOrganizationType,
   /// Invalid UTF-8 binary.
   InvalidUtf8Error(Utf8Error),
-  /// This variant indicate Error from nom combinators.
-  NomError(nom::error::Error<&'a [u8]>),
-  /// This variant indicate Incomplete error from nom.
-  NomIncomplete(nom::Needed),
-  /// This variant indicate Failure error from nom.
-  NomFailure,
+  /// Failed to decompress zlib data.
+  DecompressZlibError,
+  Nom(I, ErrorKind),
 }
 
-impl Display for Error<'_> {
+impl<I> Display for ParseError<I> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       Self::InvalidArgbColorFormat => write!(f, "invalid binary array or value of ArgbColor"),
@@ -44,14 +46,13 @@ impl Display for Error<'_> {
       Self::InvalidModifierType => write!(f, "unknown value of Modifier Type"),
       Self::InvalidOrganizationType => write!(f, "unknown value of Organization Type"),
       Self::InvalidUtf8Error(e) => write!(f, "invalid UTF-8 error: {e}"),
-      Self::NomError(e) => write!(f, "nom error: {:?}", e.code),
-      Self::NomIncomplete(_) => write!(f, "nom incompelete error"),
-      Self::NomFailure => write!(f, "nom failure error"),
+      Self::DecompressZlibError => write!(f, "failed to decompress zlib data"),
+      Self::Nom(_, e) => write!(f, "nom error: {:?}", e),
     }
   }
 }
 
-impl std::error::Error for Error<'_> {
+impl<I: Debug> std::error::Error for ParseError<I> {
   fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
     match self {
       Self::InvalidUtf8Error(e) => Some(e),
@@ -60,20 +61,32 @@ impl std::error::Error for Error<'_> {
   }
 }
 
-impl From<Utf8Error> for Error<'_> {
+impl<I> From<Utf8Error> for ParseError<I> {
   fn from(e: Utf8Error) -> Self {
     Self::InvalidUtf8Error(e)
   }
 }
 
-impl<'a> From<nom::error::Error<&'a [u8]>> for Error<'a> {
-  fn from(e: nom::error::Error<&'a [u8]>) -> Self {
-    Self::NomError(e)
+impl<I, E> FromExternalError<I, E> for ParseError<I> {
+  fn from_external_error(input: I, kind: ErrorKind, _err: E) -> Self {
+    ParseError::Nom(input, kind)
   }
 }
 
-impl<'a> From<nom::Needed> for Error<'a> {
-  fn from(e: nom::Needed) -> Self {
-    Self::NomIncomplete(e)
+impl<I> nom::error::ParseError<I> for ParseError<I> {
+  fn from_error_kind(input: I, kind: ErrorKind) -> Self {
+    ParseError::Nom(input, kind)
+  }
+
+  fn append(_: I, _: ErrorKind, other: Self) -> Self {
+    other
   }
 }
+
+impl<'a> From<ParseError<&'a str>> for nom::Err<ParseError<&'a str>> {
+  fn from(err: ParseError<&'a str>) -> Self {
+    nom::Err::Error(err)
+  }
+}
+
+pub type PQResult<I, T> = nom::IResult<I, T, ParseError<I>>;

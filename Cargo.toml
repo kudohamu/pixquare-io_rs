@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-nom = "8.0.0"
-strum = { version = "0.28", features = ["derive"] }
+flate2 = "1.1.9"
 half = "2.7.1"
+nom = "8.0.0"

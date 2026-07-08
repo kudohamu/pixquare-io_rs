@@ -1,4 +1,4 @@
-use crate::{error::Error, primitive_type::OptionSet};
+use crate::{error::ParseError, primitive_type::OptionSet};
 
 /// https://docs.pixquare.art/pixquare-file/binary-specs#coordinate
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,13 +31,21 @@ pub struct ArgbColor {
 }
 
 impl TryFrom<&[u8]> for ArgbColor {
-  type Error = Error<'static>;
+  type Error = ParseError<&'static [u8]>;
 
   fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-    let r = value.get(0).ok_or_else(|| Error::InvalidArgbColorFormat)?;
-    let g = value.get(0).ok_or_else(|| Error::InvalidArgbColorFormat)?;
-    let b = value.get(0).ok_or_else(|| Error::InvalidArgbColorFormat)?;
-    let a = value.get(0).ok_or_else(|| Error::InvalidArgbColorFormat)?;
+    let r = value
+      .get(0)
+      .ok_or_else(|| ParseError::InvalidArgbColorFormat)?;
+    let g = value
+      .get(1)
+      .ok_or_else(|| ParseError::InvalidArgbColorFormat)?;
+    let b = value
+      .get(2)
+      .ok_or_else(|| ParseError::InvalidArgbColorFormat)?;
+    let a = value
+      .get(3)
+      .ok_or_else(|| ParseError::InvalidArgbColorFormat)?;
 
     Ok(Self {
       r: *r,
@@ -98,7 +106,7 @@ pub enum BlendMode {
 }
 
 impl TryFrom<u16> for BlendMode {
-  type Error = Error<'static>;
+  type Error = ParseError<&'static [u8]>;
 
   fn try_from(v: u16) -> Result<Self, Self::Error> {
     match v {
@@ -118,7 +126,7 @@ impl TryFrom<u16> for BlendMode {
       13 => Ok(Self::Saturation),
       14 => Ok(Self::Color),
       15 => Ok(Self::Luminosity),
-      _ => Err(Error::InvalidBlendMode),
+      _ => Err(ParseError::InvalidBlendMode),
     }
   }
 }
@@ -130,12 +138,12 @@ pub enum CustomDataType {
 }
 
 impl TryFrom<u8> for CustomDataType {
-  type Error = Error<'static>;
+  type Error = ParseError<&'static [u8]>;
 
   fn try_from(v: u8) -> Result<Self, Self::Error> {
     match v {
       0 => Ok(Self::String),
-      _ => Err(Error::InvalidCustomDataType),
+      _ => Err(ParseError::InvalidCustomDataType),
     }
   }
 }
@@ -150,7 +158,7 @@ pub enum FxType {
 }
 
 impl TryFrom<u8> for FxType {
-  type Error = Error<'static>;
+  type Error = ParseError<&'static [u8]>;
 
   fn try_from(v: u8) -> Result<Self, Self::Error> {
     match v {
@@ -158,7 +166,7 @@ impl TryFrom<u8> for FxType {
       1 => Ok(Self::Outline),
       3 => Ok(Self::AntiAliasing),
       4 => Ok(Self::PatternOverlay),
-      _ => Err(Error::InvalidFxType),
+      _ => Err(ParseError::InvalidFxType),
     }
   }
 }
@@ -173,7 +181,7 @@ pub enum EntryType {
 }
 
 impl TryFrom<u8> for EntryType {
-  type Error = Error<'static>;
+  type Error = ParseError<&'static [u8]>;
 
   fn try_from(v: u8) -> Result<Self, Self::Error> {
     match v {
@@ -181,7 +189,7 @@ impl TryFrom<u8> for EntryType {
       1 => Ok(Self::Group),
       2 => Ok(Self::ReferenceLayer),
       3 => Ok(Self::TilemapLayer),
-      _ => Err(Error::InvalidEntryType),
+      _ => Err(ParseError::InvalidEntryType),
     }
   }
 }
@@ -195,14 +203,14 @@ pub enum GuideLineType {
 }
 
 impl TryFrom<u8> for GuideLineType {
-  type Error = Error<'static>;
+  type Error = ParseError<&'static [u8]>;
 
   fn try_from(v: u8) -> Result<Self, Self::Error> {
     match v {
       0 => Ok(Self::Grid),
       1 => Ok(Self::Isometric),
       2 => Ok(Self::Perspective),
-      _ => Err(Error::InvalidGuideLineType),
+      _ => Err(ParseError::InvalidGuideLineType),
     }
   }
 }
@@ -217,7 +225,7 @@ pub enum ProcessorType {
 }
 
 impl TryFrom<u8> for ProcessorType {
-  type Error = Error<'static>;
+  type Error = ParseError<&'static [u8]>;
 
   fn try_from(v: u8) -> Result<Self, Self::Error> {
     match v {
@@ -225,7 +233,7 @@ impl TryFrom<u8> for ProcessorType {
       1 => Ok(Self::Vignette),
       2 => Ok(Self::Bloom),
       3 => Ok(Self::RoundPixel),
-      _ => Err(Error::InvalidProcessorType),
+      _ => Err(ParseError::InvalidProcessorType),
     }
   }
 }
@@ -237,12 +245,12 @@ pub enum ModifierType {
 }
 
 impl TryFrom<u8> for ModifierType {
-  type Error = Error<'static>;
+  type Error = ParseError<&'static [u8]>;
 
   fn try_from(v: u8) -> Result<Self, Self::Error> {
     match v {
       0 => Ok(Self::AnimationSpeedMultiplier),
-      _ => Err(Error::InvalidModifierType),
+      _ => Err(ParseError::InvalidModifierType),
     }
   }
 }
@@ -255,13 +263,13 @@ pub enum OrganizationType {
 }
 
 impl TryFrom<u8> for OrganizationType {
-  type Error = Error<'static>;
+  type Error = ParseError<&'static [u8]>;
 
   fn try_from(v: u8) -> Result<Self, Self::Error> {
     match v {
       0 => Ok(Self::Packed),
       1 => Ok(Self::Anywhere),
-      _ => Err(Error::InvalidOrganizationType),
+      _ => Err(ParseError::InvalidOrganizationType),
     }
   }
 }
