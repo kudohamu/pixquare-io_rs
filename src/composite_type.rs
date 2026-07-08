@@ -273,3 +273,12 @@ impl TryFrom<u8> for OrganizationType {
     }
   }
 }
+
+/// Flip Axes
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FlipAxes {
+  /// true if flipped horizontally.
+  pub horizontal: bool,
+  /// true if flipped vertically.
+  pub vertical: bool,
+}

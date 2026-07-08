@@ -10,9 +10,11 @@ use nom::{
 use crate::{
   combinator::{
     argb_color, array_type, blend_mode, bool, compressed_colors, corners, dumb_string, float16,
-    option_set_u8, size, string,
+    option_set_u8, rect, size, string,
   },
-  composite_type::{ArgbColor, BlendMode, Corners, CustomDataType, EntryType, FxType, Size},
+  composite_type::{
+    ArgbColor, BlendMode, Corners, CustomDataType, EntryType, FlipAxes, FxType, Rect, Size,
+  },
   error::{PQResult, ParseError},
   primitive_type::OptionSet,
 };
@@ -438,127 +440,6 @@ impl Entry {
   }
 }
 
-/// Header data of Group.
-/// https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-5
-#[derive(Debug)]
-struct GroupHeader {
-  /// Size of this model.
-  pub data_size: u32,
-  /// ID length.
-  pub id_len: u8,
-  /// Name length.
-  pub name_len: u8,
-  /// Backward compatibility, always 0b00001111.
-  pub _compat: OptionSet<u8>,
-}
-
-impl GroupHeader {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
-    let (rest, input) = take(32usize).parse(input)?;
-
-    let (_input, (data_size, id_len, name_len, _compat)) =
-      (le_u32, le_u8, le_u8, option_set_u8).parse(input)?;
-
-    Ok((
-      rest,
-      Self {
-        data_size,
-        id_len,
-        name_len,
-        _compat,
-      },
-    ))
-  }
-}
-
-/// A group with all data.
-#[derive(Debug, Clone)]
-pub struct Group {
-  /// ID.
-  /// This is the same ID as the one in `Entry`.
-  pub id: String,
-  /// Name.
-  pub name: String,
-  /// Child entries, sorted in the actual order.
-  /// A higher index means being above.
-  pub child_entries: Vec<Entry>,
-  pub opacity: f16,
-  pub visible: bool,
-  pub content_locked: bool,
-  pub selected: bool,
-  pub alpha_locked: bool,
-  /// Default: true.
-  pub expanded: bool,
-  /// Cropping masks, sorted in the actual order.
-  /// A higher index means being above.
-  /// Default: [].
-  pub cropping_masks: Vec<Entry>,
-  /// Clipping masks, sorted in the actual order.
-  /// A higher index means being above.
-  /// Default: [].
-  pub clipping_masks: Vec<Entry>,
-  /// Color.
-  /// Default: (0, 0, 0, 0).
-  pub color: ArgbColor,
-}
-
-impl Group {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
-    let (input, header) = GroupHeader::parse(input)?;
-
-    let (rest, input) = take(header.data_size).parse(input)?;
-    let (
-      _input,
-      (
-        id,
-        name,
-        child_entries,
-        opacity,
-        visible,
-        content_locked,
-        selected,
-        alpha_locked,
-        expanded,
-        cropping_masks,
-        clipping_masks,
-        color,
-      ),
-    ) = (
-      dumb_string(header.id_len as usize),
-      dumb_string(header.name_len as usize),
-      array_type(Entry::parse),
-      float16,
-      bool,
-      bool,
-      bool,
-      bool,
-      bool,
-      array_type(Entry::parse),
-      array_type(Entry::parse),
-      argb_color,
-    )
-      .parse(input)?;
-
-    Ok((
-      rest,
-      Self {
-        id: id.to_string(),
-        name: name.to_string(),
-        child_entries,
-        opacity,
-        visible,
-        content_locked,
-        selected,
-        alpha_locked,
-        expanded,
-        cropping_masks,
-        clipping_masks,
-        color,
-      },
-    ))
-  }
-}
-
 /// Header data of Layer.
 /// https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-4
 #[derive(Debug)]
@@ -686,6 +567,232 @@ impl Layer {
   }
 }
 
+/// Header data of Group.
+/// https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-5
+#[derive(Debug)]
+struct GroupHeader {
+  /// Size of this model.
+  pub data_size: u32,
+  /// ID length.
+  pub id_len: u8,
+  /// Name length.
+  pub name_len: u8,
+  /// Backward compatibility, always 0b00001111.
+  pub _compat: OptionSet<u8>,
+}
+
+impl GroupHeader {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (rest, input) = take(32usize).parse(input)?;
+
+    let (_input, (data_size, id_len, name_len, _compat)) =
+      (le_u32, le_u8, le_u8, option_set_u8).parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        data_size,
+        id_len,
+        name_len,
+        _compat,
+      },
+    ))
+  }
+}
+
+/// A group with all data.
+#[derive(Debug, Clone)]
+pub struct Group {
+  /// ID.
+  /// This is the same ID as the one in `Entry`.
+  pub id: String,
+  /// Name.
+  pub name: String,
+  /// Child entries, sorted in the actual order.
+  /// A higher index means being above.
+  pub child_entries: Vec<Entry>,
+  pub opacity: f16,
+  pub visible: bool,
+  pub content_locked: bool,
+  pub selected: bool,
+  pub alpha_locked: bool,
+  /// Default: true.
+  pub expanded: bool,
+  /// Cropping masks, sorted in the actual order.
+  /// A higher index means being above.
+  /// Default: [].
+  pub cropping_masks: Vec<Entry>,
+  /// Clipping masks, sorted in the actual order.
+  /// A higher index means being above.
+  /// Default: [].
+  pub clipping_masks: Vec<Entry>,
+  /// Color.
+  /// Default: (0, 0, 0, 0).
+  pub color: ArgbColor,
+}
+
+impl Group {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (input, header) = GroupHeader::parse(input)?;
+
+    let (rest, input) = take(header.data_size).parse(input)?;
+    let (
+      _input,
+      (
+        id,
+        name,
+        child_entries,
+        opacity,
+        visible,
+        content_locked,
+        selected,
+        alpha_locked,
+        expanded,
+        cropping_masks,
+        clipping_masks,
+        color,
+      ),
+    ) = (
+      dumb_string(header.id_len as usize),
+      dumb_string(header.name_len as usize),
+      array_type(Entry::parse),
+      float16,
+      bool,
+      bool,
+      bool,
+      bool,
+      bool,
+      array_type(Entry::parse),
+      array_type(Entry::parse),
+      argb_color,
+    )
+      .parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        id: id.to_string(),
+        name: name.to_string(),
+        child_entries,
+        opacity,
+        visible,
+        content_locked,
+        selected,
+        alpha_locked,
+        expanded,
+        cropping_masks,
+        clipping_masks,
+        color,
+      },
+    ))
+  }
+}
+
+/// Header data of ReferenceLayer.
+/// 32 bytes.
+/// https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-6
+#[derive(Debug)]
+struct ReferenceLayerHeader {
+  /// Size of this model.
+  data_size: u32,
+  /// Length of PNG data.
+  png_data_len: u64,
+  /// ID length.
+  id_len: u8,
+  /// Name length.
+  name_len: u8,
+}
+
+impl ReferenceLayerHeader {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (rest, input) = take(32usize).parse(input)?;
+
+    let (_input, (data_size, png_data_len, id_len, name_len)) =
+      (le_u32, le_u64, le_u8, le_u8).parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        data_size,
+        png_data_len,
+        id_len,
+        name_len,
+      },
+    ))
+  }
+}
+
+/// A reference layer with all data.
+/// https://docs.pixquare.art/pixquare-file/binary-specs#content-11
+#[derive(Debug, Clone)]
+pub struct ReferenceLayer {
+  /// ID.
+  /// The length is specified in the header.
+  /// This is the same ID as the one in `Entry`.
+  pub id: String,
+  /// PNG data of the reference image.
+  /// Length is specified in the header.
+  pub png_data: Vec<u8>,
+  /// Name.
+  /// The length is specified in the header.
+  pub name: String,
+  pub opacity: f16,
+  pub visible: bool,
+  pub selected: bool,
+  pub bounds: Rect,
+  /// Rotation angle in radians.
+  /// Default: 0
+  pub angle: f32,
+  /// Default: (0, 0, 0, 0)
+  pub color: ArgbColor,
+  /// Flip axes.
+  /// OptionSet<UInt8>
+  /// Default: 0
+  pub flip_axes: FlipAxes,
+}
+
+impl ReferenceLayer {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (input, header) = ReferenceLayerHeader::parse(input)?;
+
+    let (
+      input,
+      (id, png_data, name, opacity, visible, selected, bounds, angle, color, flip_axes_bin),
+    ) = (
+      dumb_string(header.id_len as usize),
+      take(header.data_size),
+      dumb_string(header.name_len as usize),
+      float16,
+      bool,
+      bool,
+      rect,
+      le_f32,
+      argb_color,
+      option_set_u8,
+    )
+      .parse(input)?;
+
+    Ok((
+      input,
+      Self {
+        id: id.to_string(),
+        png_data: png_data.into(),
+        name: name.to_string(),
+        opacity,
+        visible,
+        selected,
+        bounds,
+        angle,
+        color,
+        flip_axes: FlipAxes {
+          horizontal: flip_axes_bin.flag(0),
+          vertical: flip_axes_bin.flag(1),
+        },
+      },
+    ))
+  }
+}
+
 /// Header data of Artwork.
 /// https://docs.pixquare.art/pixquare-file/binary-specs#header-64-bytes
 #[derive(Debug)]
@@ -731,6 +838,8 @@ pub struct Artwork {
   pub groups: Vec<Group>,
   pub layers: Vec<Layer>,
   pub frame_contents: Vec<FrameContent>,
+  pub palette: Vec<ArgbColor>,
+  pub reference_layers: Vec<ReferenceLayer>,
 }
 
 impl<'a> Artwork {
@@ -746,13 +855,18 @@ impl<'a> Artwork {
   fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (input, header) = ArtworkHeader::parse(input)?;
 
-    let (input, (id, canvas_size, entries, groups, layers, frame_contents)) = (
+    let (
+      input,
+      (id, canvas_size, entries, groups, layers, frame_contents, palette, reference_layers),
+    ) = (
       dumb_string(header.id_len as usize),
       size,
       array_type(Entry::parse),
       array_type(Group::parse),
       array_type(Layer::parse),
       array_type(FrameContent::parse),
+      array_type(argb_color),
+      array_type(ReferenceLayer::parse),
     )
       .parse(input)?;
 
@@ -765,6 +879,8 @@ impl<'a> Artwork {
         groups,
         layers,
         frame_contents,
+        palette,
+        reference_layers,
       },
     ))
   }
