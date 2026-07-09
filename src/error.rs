@@ -26,6 +26,8 @@ pub enum ParseError<I> {
   InvalidModifierType,
   /// Unknown value of Organization Type.
   InvalidOrganizationType,
+  /// Unknown value of animation direction.
+  InvalidAnimationDirection,
   /// Invalid UTF-8 binary.
   InvalidUtf8Error(Utf8Error),
   /// Failed to decompress zlib data.
@@ -45,6 +47,7 @@ impl<I> Display for ParseError<I> {
       Self::InvalidProcessorType => write!(f, "unknown value of Processor Type"),
       Self::InvalidModifierType => write!(f, "unknown value of Modifier Type"),
       Self::InvalidOrganizationType => write!(f, "unknown value of Organization Type"),
+      Self::InvalidAnimationDirection => write!(f, "unknown value of animation direction"),
       Self::InvalidUtf8Error(e) => write!(f, "invalid UTF-8 error: {e}"),
       Self::DecompressZlibError => write!(f, "failed to decompress zlib data"),
       Self::Nom(_, e) => write!(f, "nom error: {:?}", e),

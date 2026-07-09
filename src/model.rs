@@ -13,8 +13,8 @@ use crate::{
     option_set_u8, rect, size, string,
   },
   composite_type::{
-    ArgbColor, BlendMode, Corners, CustomDataType, EntryType, FlipAxes, FxType, Rect, Size,
-    SymmetryType,
+    AnimationDirection, ArgbColor, BlendMode, Corners, CustomDataType, EntryType, FlipAxes, FxType,
+    Rect, Size, SymmetryType,
   },
   error::{PQResult, ParseError},
   primitive_type::OptionSet,
@@ -297,6 +297,88 @@ impl SymmetryLine {
         angle,
         segment_count,
         symmetry_type,
+      },
+    ))
+  }
+}
+
+/// Header data of Tag.
+/// 16 bytes.
+/// https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-2
+#[derive(Debug)]
+struct TagHeader {
+  /// Size of this model.
+  data_size: u32,
+  /// ID length.
+  id_len: u8,
+  /// Name length.
+  name_len: u8,
+}
+
+impl TagHeader {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (rest, input) = take(16usize).parse(input)?;
+
+    let (_input, (data_size, id_len, name_len)) = (le_u32, le_u8, le_u8).parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        data_size,
+        id_len,
+        name_len,
+      },
+    ))
+  }
+}
+
+/// Tag is a collection data of consecutive frames.
+/// https://docs.pixquare.art/pixquare-file/binary-specs#content-5
+#[derive(Debug, Clone)]
+pub struct Tag {
+  /// ID.
+  /// The length is specified in the header.
+  pub id: String,
+  /// Name.
+  /// The length is specified in the header.
+  pub name: String,
+  /// Start frame index.
+  pub start_index: u16,
+  /// End frame index.
+  pub end_index: u16,
+  pub selected: bool,
+  pub color: ArgbColor,
+  pub direction: AnimationDirection,
+  pub loop_count: u16,
+}
+
+impl Tag {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (input, header) = TagHeader::parse(input)?;
+
+    let (input, (id, name, start_index, end_index, selected, color, direction, loop_count)) = (
+      dumb_string(header.id_len as usize),
+      dumb_string(header.name_len as usize),
+      le_u16,
+      le_u16,
+      bool,
+      argb_color,
+      map_res(le_u8, |b| b.try_into()),
+      le_u16,
+    )
+      .parse(input)?;
+
+    Ok((
+      input,
+      Self {
+        id: id.to_string(),
+        name: name.to_string(),
+        start_index,
+        end_index,
+        selected,
+        color,
+        direction,
+        loop_count,
       },
     ))
   }
@@ -927,9 +1009,14 @@ pub struct Artwork {
   pub layers: Vec<Layer>,
   pub frame_contents: Vec<FrameContent>,
   pub palette: Vec<ArgbColor>,
+  /// Default: `[]` .
   pub reference_layers: Vec<ReferenceLayer>,
+  /// Default: `[]` .
   pub reference_images: Vec<Vec<u8>>,
+  /// Default: `[]` .
   pub symmetry_lines: Vec<SymmetryLine>,
+  /// Default: `[]` .
+  pub tags: Vec<Tag>,
 }
 
 impl<'a> Artwork {
@@ -958,6 +1045,7 @@ impl<'a> Artwork {
         reference_layers,
         reference_images,
         symmetry_lines,
+        tags,
       ),
     ) = (
       dumb_string(header.id_len as usize),
@@ -970,6 +1058,7 @@ impl<'a> Artwork {
       array_type(ReferenceLayer::parse),
       array_type(array_type(le_u8)),
       array_type(SymmetryLine::parse),
+      array_type(Tag::parse),
     )
       .parse(input)?;
 
@@ -986,6 +1075,7 @@ impl<'a> Artwork {
         reference_layers,
         reference_images,
         symmetry_lines,
+        tags,
       },
     ))
   }
@@ -1004,6 +1094,7 @@ mod tests {
     assert!(file.is_ok());
 
     let artwork = file.unwrap();
+    println!("{:?}", artwork);
     assert_eq!(
       artwork.canvas_size,
       Size {

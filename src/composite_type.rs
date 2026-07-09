@@ -299,3 +299,24 @@ impl From<u8> for SymmetryType {
     Self::Rotate
   }
 }
+
+/// A direction of frame animation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnimationDirection {
+  Forward,
+  Backward,
+  PingPong,
+}
+
+impl TryFrom<u8> for AnimationDirection {
+  type Error = ParseError<&'static [u8]>;
+
+  fn try_from(value: u8) -> Result<Self, Self::Error> {
+    match value {
+      0 => Ok(Self::Forward),
+      1 => Ok(Self::Backward),
+      2 => Ok(Self::PingPong),
+      _ => Err(ParseError::InvalidAnimationDirection),
+    }
+  }
+}
