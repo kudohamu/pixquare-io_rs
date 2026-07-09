@@ -66,11 +66,15 @@ pub fn array_type<'a, F>(
   &'a [u8],
   Output = Vec<<F as Parser<&'a [u8]>>::Output>,
   Error = <F as Parser<&'a [u8]>>::Error,
->
+> + Clone
 where
   F: Parser<&'a [u8]> + Clone,
 {
-  le_u64.flat_map(move |len| type_n(parser.clone(), len as usize))
+  move |input: &'a [u8]| {
+    let (input, len) = le_u64.parse(input)?;
+
+    type_n(parser.clone(), len as usize).parse(input)
+  }
 }
 
 /// Combinator(complete version) for coordinate.

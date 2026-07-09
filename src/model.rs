@@ -840,6 +840,7 @@ pub struct Artwork {
   pub frame_contents: Vec<FrameContent>,
   pub palette: Vec<ArgbColor>,
   pub reference_layers: Vec<ReferenceLayer>,
+  pub reference_images: Vec<Vec<u8>>,
 }
 
 impl<'a> Artwork {
@@ -857,7 +858,17 @@ impl<'a> Artwork {
 
     let (
       input,
-      (id, canvas_size, entries, groups, layers, frame_contents, palette, reference_layers),
+      (
+        id,
+        canvas_size,
+        entries,
+        groups,
+        layers,
+        frame_contents,
+        palette,
+        reference_layers,
+        reference_images,
+      ),
     ) = (
       dumb_string(header.id_len as usize),
       size,
@@ -867,6 +878,7 @@ impl<'a> Artwork {
       array_type(FrameContent::parse),
       array_type(argb_color),
       array_type(ReferenceLayer::parse),
+      array_type(array_type(le_u8)),
     )
       .parse(input)?;
 
@@ -881,6 +893,7 @@ impl<'a> Artwork {
         frame_contents,
         palette,
         reference_layers,
+        reference_images,
       },
     ))
   }
