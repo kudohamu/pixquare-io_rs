@@ -282,3 +282,20 @@ pub struct FlipAxes {
   /// true if flipped vertically.
   pub vertical: bool,
 }
+
+/// Symmetry type
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SymmetryType {
+  Mirror,
+  Rotate,
+}
+
+impl From<u8> for SymmetryType {
+  fn from(value: u8) -> Self {
+    if value == 0 {
+      return Self::Mirror;
+    }
+
+    Self::Rotate
+  }
+}

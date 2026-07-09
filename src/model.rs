@@ -2,7 +2,7 @@ use half::f16;
 use nom::{
   Parser,
   bytes::take,
-  combinator::map_res,
+  combinator::{map, map_res},
   error::ErrorKind,
   number::complete::{le_f32, le_u8, le_u16, le_u32, le_u64},
 };
@@ -14,6 +14,7 @@ use crate::{
   },
   composite_type::{
     ArgbColor, BlendMode, Corners, CustomDataType, EntryType, FlipAxes, FxType, Rect, Size,
+    SymmetryType,
   },
   error::{PQResult, ParseError},
   primitive_type::OptionSet,
@@ -209,6 +210,93 @@ impl Frame {
         opacity,
         z_index,
         custom_datas,
+      },
+    ))
+  }
+}
+
+/// Header data of SymmetryLine.
+/// 16 bytes.
+/// https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-1
+#[derive(Debug)]
+struct SymmetryLineHeader {
+  /// Size of this model.
+  data_size: u32,
+  /// ID length.
+  id_len: u8,
+  /// Backward compatibility. Always `0b00000011` .
+  _compat: OptionSet<u8>,
+}
+
+impl SymmetryLineHeader {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (rest, input) = take(16usize).parse(input)?;
+
+    let (_input, (data_size, id_len, _compat)) = (le_u32, le_u8, option_set_u8).parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        data_size,
+        id_len,
+        _compat,
+      },
+    ))
+  }
+}
+
+/// Settings of symmetry line.
+/// https://docs.pixquare.art/pixquare-file/binary-specs#content-4
+#[derive(Debug, Clone)]
+pub struct SymmetryLine {
+  /// ID.
+  /// The length is specified in the header.
+  pub id: String,
+  pub color: ArgbColor,
+  pub selected: bool,
+  pub enabled: bool,
+  /// x-value of the origin.
+  pub origin_x: f32,
+  /// y-value of the origin.
+  pub origin_y: f32,
+  /// Rotation angle in radians.
+  pub angle: f32,
+  pub segment_count: u8,
+  pub symmetry_type: SymmetryType,
+}
+
+impl SymmetryLine {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (input, header) = SymmetryLineHeader::parse(input)?;
+
+    let (
+      input,
+      (id, color, selected, enabled, origin_x, origin_y, angle, segment_count, symmetry_type),
+    ) = (
+      dumb_string(header.id_len as usize),
+      argb_color,
+      bool,
+      bool,
+      le_f32,
+      le_f32,
+      le_f32,
+      le_u8,
+      map(le_u8, |b| b.into()),
+    )
+      .parse(input)?;
+
+    Ok((
+      input,
+      Self {
+        id: id.to_string(),
+        color,
+        selected,
+        enabled,
+        origin_x,
+        origin_y,
+        angle,
+        segment_count,
+        symmetry_type,
       },
     ))
   }
@@ -841,6 +929,7 @@ pub struct Artwork {
   pub palette: Vec<ArgbColor>,
   pub reference_layers: Vec<ReferenceLayer>,
   pub reference_images: Vec<Vec<u8>>,
+  pub symmetry_lines: Vec<SymmetryLine>,
 }
 
 impl<'a> Artwork {
@@ -868,6 +957,7 @@ impl<'a> Artwork {
         palette,
         reference_layers,
         reference_images,
+        symmetry_lines,
       ),
     ) = (
       dumb_string(header.id_len as usize),
@@ -879,6 +969,7 @@ impl<'a> Artwork {
       array_type(argb_color),
       array_type(ReferenceLayer::parse),
       array_type(array_type(le_u8)),
+      array_type(SymmetryLine::parse),
     )
       .parse(input)?;
 
@@ -894,6 +985,7 @@ impl<'a> Artwork {
         palette,
         reference_layers,
         reference_images,
+        symmetry_lines,
       },
     ))
   }
