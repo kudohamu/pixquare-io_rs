@@ -130,6 +130,53 @@ impl FrameContent {
   }
 }
 
+/// Header data of TilemapFrameContent.
+/// 32 bytes
+/// https://docs.pixquare.art/pixquare-file/binary-specs?q=tileset#header-32-bytes-1
+#[derive(Debug)]
+struct TilemapFrameContentHeader {
+  /// Size of this model.
+  data_size: u64,
+}
+
+impl TilemapFrameContentHeader {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (rest, input) = take(32usize).parse(input)?;
+
+    let (_input, data_size) = le_u64.parse(input)?;
+
+    Ok((rest, Self { data_size }))
+  }
+}
+
+/// The alignment of a tilemap cel.
+/// https://docs.pixquare.art/pixquare-file/binary-specs?q=tileset#content-2
+#[derive(Debug, Clone)]
+pub struct TilemapFrameContent {
+  pub id: String,
+  pub tile_size: Size,
+  /// Alignment of tile on the canvas.
+  /// UInt16.max is for unassigned tiles.
+  pub tiles: Vec<u16>,
+}
+
+impl TilemapFrameContent {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (input, _header) = TilemapFrameContentHeader::parse(input)?;
+
+    let (input, (id, tile_size, tiles)) = (string, size, array_type(le_u16)).parse(input)?;
+
+    Ok((
+      input,
+      Self {
+        id: id.to_string(),
+        tile_size,
+        tiles,
+      },
+    ))
+  }
+}
+
 /// Header data of Frame.
 /// https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-2
 #[derive(Debug)]
@@ -1183,6 +1230,8 @@ pub struct Artwork {
   pub tilesets: Vec<Tileset>,
   /// Default: []
   pub tilemap_layers: Vec<TilemapLayer>,
+  /// Default: []
+  pub tilemap_frame_contents: Vec<TilemapFrameContent>,
 }
 
 impl<'a> Artwork {
@@ -1214,6 +1263,7 @@ impl<'a> Artwork {
         tags,
         tilesets,
         tilemap_layers,
+        tilemap_frame_contents,
       ),
     ) = (
       dumb_string(header.id_len as usize),
@@ -1229,6 +1279,7 @@ impl<'a> Artwork {
       array_type(Tag::parse),
       array_type(Tileset::parse),
       array_type(TilemapLayer::parse),
+      array_type(TilemapFrameContent::parse),
     )
       .parse(input)?;
 
@@ -1248,6 +1299,7 @@ impl<'a> Artwork {
         tags,
         tilesets,
         tilemap_layers,
+        tilemap_frame_contents,
       },
     ))
   }
