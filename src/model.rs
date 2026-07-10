@@ -403,6 +403,7 @@ impl TilesetHeader {
   }
 }
 
+/// 32 bytes
 /// https://docs.pixquare.art/pixquare-file/binary-specs#content-6
 #[derive(Debug, Clone)]
 pub struct Tileset {
@@ -1026,6 +1027,104 @@ impl ReferenceLayer {
   }
 }
 
+/// Header data of TilemapLayer.
+/// 32 bytes
+/// https://docs.pixquare.art/pixquare-file/binary-specs?q=tileset#header-32-bytes-7
+#[derive(Debug)]
+struct TilemapLayerHeader {
+  /// Size of this model.
+  data_size: u32,
+}
+
+impl TilemapLayerHeader {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (rest, input) = take(32usize).parse(input)?;
+
+    let (_input, data_size) = le_u32.parse(input)?;
+
+    Ok((rest, Self { data_size }))
+  }
+}
+
+/// https://docs.pixquare.art/pixquare-file/binary-specs?q=tileset#content-6
+#[derive(Debug, Clone)]
+pub struct TilemapLayer {
+  /// ID.
+  /// This is the same ID as the one in `Entry`.
+  pub id: String,
+  pub tileset_id: String,
+  pub name: String,
+  /// Frames of this tilemap layer.
+  pub frames: Vec<Frame>,
+  pub opacity: f16,
+  pub visible: bool,
+  pub locked: bool,
+  pub selected: bool,
+  pub alpha_locked: bool,
+  /// Default: Normal
+  pub blend_mode: BlendMode,
+  /// Default: false
+  pub linked: bool,
+  /// Default: (0, 0, 0, 0)
+  pub color: ArgbColor,
+}
+
+impl TilemapLayer {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (input, _header) = TilemapLayerHeader::parse(input)?;
+
+    let (
+      input,
+      (
+        id,
+        tileset_id,
+        name,
+        frames,
+        opacity,
+        visible,
+        locked,
+        selected,
+        alpha_locked,
+        blend_mode,
+        linked,
+        color,
+      ),
+    ) = (
+      string,
+      string,
+      string,
+      array_type(Frame::parse),
+      float16,
+      bool,
+      bool,
+      bool,
+      bool,
+      blend_mode,
+      bool,
+      argb_color,
+    )
+      .parse(input)?;
+
+    Ok((
+      input,
+      Self {
+        id: id.to_string(),
+        tileset_id: tileset_id.to_string(),
+        name: name.to_string(),
+        frames,
+        opacity,
+        visible,
+        locked,
+        selected,
+        alpha_locked,
+        blend_mode,
+        linked,
+        color,
+      },
+    ))
+  }
+}
+
 /// Header data of Artwork.
 /// https://docs.pixquare.art/pixquare-file/binary-specs#header-64-bytes
 #[derive(Debug)]
@@ -1082,6 +1181,8 @@ pub struct Artwork {
   pub tags: Vec<Tag>,
   /// Default: []
   pub tilesets: Vec<Tileset>,
+  /// Default: []
+  pub tilemap_layers: Vec<TilemapLayer>,
 }
 
 impl<'a> Artwork {
@@ -1112,6 +1213,7 @@ impl<'a> Artwork {
         symmetry_lines,
         tags,
         tilesets,
+        tilemap_layers,
       ),
     ) = (
       dumb_string(header.id_len as usize),
@@ -1126,6 +1228,7 @@ impl<'a> Artwork {
       array_type(SymmetryLine::parse),
       array_type(Tag::parse),
       array_type(Tileset::parse),
+      array_type(TilemapLayer::parse),
     )
       .parse(input)?;
 
@@ -1144,6 +1247,7 @@ impl<'a> Artwork {
         symmetry_lines,
         tags,
         tilesets,
+        tilemap_layers,
       },
     ))
   }
