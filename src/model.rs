@@ -384,6 +384,69 @@ impl Tag {
   }
 }
 
+/// Header data of Tileset.
+/// 32 bytes
+/// https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-3
+#[derive(Debug)]
+struct TilesetHeader {
+  /// Size of this model.
+  data_size: u32,
+}
+
+impl TilesetHeader {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (rest, input) = take(32usize).parse(input)?;
+
+    let (_input, data_size) = le_u32.parse(input)?;
+
+    Ok((rest, Self { data_size }))
+  }
+}
+
+/// https://docs.pixquare.art/pixquare-file/binary-specs#content-6
+#[derive(Debug, Clone)]
+pub struct Tileset {
+  pub id: String,
+  pub name: String,
+  pub tile_size: Size,
+  /// Compressed color data of each tile using zlib compression.
+  /// After decompressing, it will be in the form of [ARGBColor].
+  pub tile_images: Vec<ArgbColor>,
+  /// Tiles per row.
+  /// Default: 6
+  pub tiles_per_row: u16,
+  /// Default: Black
+  pub grid_color: ArgbColor,
+}
+
+impl Tileset {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (input, _header) = TilesetHeader::parse(input)?;
+
+    let (input, (id, name, tile_size, tile_images, tiles_per_row, grid_color)) = (
+      string,
+      string,
+      size,
+      array_type(argb_color),
+      le_u16,
+      argb_color,
+    )
+      .parse(input)?;
+
+    Ok((
+      input,
+      Self {
+        id: id.to_string(),
+        name: name.to_string(),
+        tile_size,
+        tile_images,
+        tiles_per_row,
+        grid_color,
+      },
+    ))
+  }
+}
+
 /// Header data of Fx.
 /// https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-3
 #[derive(Debug)]
@@ -1009,14 +1072,16 @@ pub struct Artwork {
   pub layers: Vec<Layer>,
   pub frame_contents: Vec<FrameContent>,
   pub palette: Vec<ArgbColor>,
-  /// Default: `[]` .
+  /// Default: []
   pub reference_layers: Vec<ReferenceLayer>,
-  /// Default: `[]` .
+  /// Default: []
   pub reference_images: Vec<Vec<u8>>,
-  /// Default: `[]` .
+  /// Default: []
   pub symmetry_lines: Vec<SymmetryLine>,
-  /// Default: `[]` .
+  /// Default: []
   pub tags: Vec<Tag>,
+  /// Default: []
+  pub tilesets: Vec<Tileset>,
 }
 
 impl<'a> Artwork {
@@ -1046,6 +1111,7 @@ impl<'a> Artwork {
         reference_images,
         symmetry_lines,
         tags,
+        tilesets,
       ),
     ) = (
       dumb_string(header.id_len as usize),
@@ -1059,6 +1125,7 @@ impl<'a> Artwork {
       array_type(array_type(le_u8)),
       array_type(SymmetryLine::parse),
       array_type(Tag::parse),
+      array_type(Tileset::parse),
     )
       .parse(input)?;
 
@@ -1076,6 +1143,7 @@ impl<'a> Artwork {
         reference_images,
         symmetry_lines,
         tags,
+        tilesets,
       },
     ))
   }
