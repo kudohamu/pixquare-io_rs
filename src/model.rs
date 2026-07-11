@@ -1278,7 +1278,7 @@ impl GuideLineHeader {
 }
 
 /// Content data of grid type for GuideLine.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GuideLineGridContent {
   pub size: Size,
   pub color: ArgbColor,
@@ -1305,7 +1305,7 @@ impl GuideLineGridContent {
 }
 
 /// Content data of isometric type for GuideLine.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GuideLineIsometricContent {
   pub size: Size,
   pub color: ArgbColor,
@@ -1332,7 +1332,7 @@ impl GuideLineIsometricContent {
 }
 
 /// Content data of perspective for GuideLine.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GuideLinePerspectiveContent {
   /// An array of x-values of perspective point coordinates.
   pub x_coordinates: Vec<f32>,
@@ -1376,7 +1376,7 @@ impl GuideLinePerspectiveContent {
 
 /// Settings data of GuideLine.
 /// https://docs.pixquare.art/pixquare-file/binary-specs#content-14
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum GuideLine {
   Grid(GuideLineGridContent),
   Isometric(GuideLineIsometricContent),
@@ -1692,7 +1692,7 @@ impl PaletteOrganizationHeader {
 }
 
 /// Content data of Anywhere for PaletteOrganization.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PaletteOrganizationAnywhereContent {
   pub size: Size,
   /// The arrangement that fits into the size above.
@@ -1710,7 +1710,7 @@ impl PaletteOrganizationAnywhereContent {
 }
 
 /// https://docs.pixquare.art/pixquare-file/binary-specs#content-17
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PaletteOrganization {
   Packed,
   Anywhere(PaletteOrganizationAnywhereContent),
@@ -1941,5 +1941,80 @@ mod tests {
         height: 63
       }
     );
+    assert!(artwork.groups.is_empty());
+    assert_eq!(artwork.layers[0].name, "base");
+    assert_eq!(artwork.layers[1].name, "Layer 1");
+    assert!(artwork.reference_layers.is_empty());
+    assert!(artwork.reference_images.is_empty());
+    assert!(artwork.symmetry_lines.is_empty());
+    assert!(artwork.tags.is_empty());
+    assert!(artwork.tilesets.is_empty());
+    assert!(artwork.tilemap_layers.is_empty());
+    assert!(artwork.tilemap_frame_contents.is_empty());
+    assert_eq!(artwork.color_depth, ColorDepth::Rgb);
+    assert_eq!(artwork.stats.spent, 504);
+    assert_eq!(artwork.stats.stroke_count, 83);
+    assert_eq!(artwork.stats.undos_count, 23);
+    assert_eq!(artwork.stats.redos_count, 2);
+    assert_eq!(artwork._unused, 0);
+    assert_eq!(
+      artwork.canvas_grid.size,
+      Size {
+        width: 16,
+        height: 16,
+      }
+    );
+    assert_eq!(
+      artwork.canvas_grid.first_color,
+      ArgbColor {
+        r: 204,
+        g: 204,
+        b: 204,
+        a: 255,
+      }
+    );
+    assert_eq!(
+      artwork.canvas_grid.second_color,
+      ArgbColor {
+        r: 230,
+        g: 230,
+        b: 230,
+        a: 255,
+      }
+    );
+    assert_eq!(
+      artwork.guide_line,
+      GuideLine::Grid(GuideLineGridContent {
+        size: Size {
+          width: 16,
+          height: 16
+        },
+        color: ArgbColor {
+          r: 0,
+          g: 0,
+          b: 255,
+          a: 255
+        },
+        visible: false,
+        is_shown_in_preview: false
+      })
+    );
+    assert!(artwork.post_processors.is_empty());
+    assert_eq!(artwork.palette_organization, PaletteOrganization::Packed);
+    assert_eq!(artwork.is_need_timelapse, false);
+    assert_eq!(
+      artwork.tiled_corners,
+      Corners {
+        top_left: false,
+        top: false,
+        top_right: false,
+        right: false,
+        bottom_right: false,
+        bottom: false,
+        bottom_left: false,
+        left: false,
+      }
+    );
+    assert!(artwork.modifiers.is_empty());
   }
 }
