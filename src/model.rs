@@ -1729,13 +1729,17 @@ pub struct Artwork {
   /// Canvas grid config.
   /// Default: 16 x 16 Grid with blue color.
   pub canvas_grid: CanvasGrid,
-  /// Guide line config
-  /// Default: 16 x 16 Grid with blue color
+  /// Guide line config.
+  /// Default: 16 x 16 Grid with blue color.
   pub guide_line: GuideLine,
   /// Default: []
   pub post_processors: Vec<PostProcessor>,
   /// Default: Packed
   pub palette_organization: PaletteOrganization,
+  /// Should record timelapse.
+  pub is_need_timelapse: bool,
+  /// Default: 0
+  pub tiled_corners: Corners,
 }
 
 impl<'a> Artwork {
@@ -1756,18 +1760,20 @@ impl<'a> Artwork {
       (
         id,
         canvas_size,
-        entries,
-        groups,
-        layers,
-        frame_contents,
-        palette,
-        reference_layers,
-        reference_images,
-        symmetry_lines,
-        tags,
-        tilesets,
-        tilemap_layers,
-        tilemap_frame_contents,
+        (
+          entries,
+          groups,
+          layers,
+          frame_contents,
+          palette,
+          reference_layers,
+          reference_images,
+          symmetry_lines,
+          tags,
+          tilesets,
+          tilemap_layers,
+          tilemap_frame_contents,
+        ),
         color_depth,
         stats,
         _unused,
@@ -1775,22 +1781,26 @@ impl<'a> Artwork {
         guide_line,
         post_processors,
         palette_organization,
+        is_need_timelapse,
+        tiled_corners,
       ),
     ) = (
       dumb_string(header.id_len as usize),
       size,
-      array_type(Entry::parse),
-      array_type(Group::parse),
-      array_type(Layer::parse),
-      array_type(FrameContent::parse),
-      array_type(argb_color),
-      array_type(ReferenceLayer::parse),
-      array_type(array_type(le_u8)),
-      array_type(SymmetryLine::parse),
-      array_type(Tag::parse),
-      array_type(Tileset::parse),
-      array_type(TilemapLayer::parse),
-      array_type(TilemapFrameContent::parse),
+      (
+        array_type(Entry::parse),
+        array_type(Group::parse),
+        array_type(Layer::parse),
+        array_type(FrameContent::parse),
+        array_type(argb_color),
+        array_type(ReferenceLayer::parse),
+        array_type(array_type(le_u8)),
+        array_type(SymmetryLine::parse),
+        array_type(Tag::parse),
+        array_type(Tileset::parse),
+        array_type(TilemapLayer::parse),
+        array_type(TilemapFrameContent::parse),
+      ),
       map_res(le_u8, |b| b.try_into()),
       Stats::parse,
       le_u8,
@@ -1798,6 +1808,8 @@ impl<'a> Artwork {
       GuideLine::parse,
       array_type(PostProcessor::parse),
       PaletteOrganization::parse,
+      bool,
+      corners,
     )
       .parse(input)?;
 
@@ -1825,6 +1837,8 @@ impl<'a> Artwork {
         guide_line,
         post_processors,
         palette_organization,
+        is_need_timelapse,
+        tiled_corners,
       },
     ))
   }
