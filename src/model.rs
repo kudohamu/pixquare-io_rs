@@ -1288,6 +1288,8 @@ pub struct Artwork {
   pub color_depth: ColorDepth,
   /// Some stats of this file.
   pub stats: Stats,
+  /// Ignore this byte.
+  pub _unused: u8,
 }
 
 impl<'a> Artwork {
@@ -1322,6 +1324,7 @@ impl<'a> Artwork {
         tilemap_frame_contents,
         color_depth,
         stats,
+        _unused,
       ),
     ) = (
       dumb_string(header.id_len as usize),
@@ -1340,6 +1343,7 @@ impl<'a> Artwork {
       array_type(TilemapFrameContent::parse),
       map_res(le_u8, |b| b.try_into()),
       Stats::parse,
+      le_u8,
     )
       .parse(input)?;
 
@@ -1362,6 +1366,7 @@ impl<'a> Artwork {
         tilemap_frame_contents,
         color_depth,
         stats,
+        _unused,
       },
     ))
   }
