@@ -14,8 +14,8 @@ use crate::{
   },
   composite_type::{
     AnimationDirection, ArgbColor, BlendMode, ColorDepth, Corners, CustomDataType, EntryType,
-    FlipAxes, FxType, GuideLineType, PaletteOrganizationType, ProcessorType, Rect, Size,
-    SymmetryType,
+    FlipAxes, FxType, GuideLineType, ModifierType, PaletteOrganizationType, ProcessorType, Rect,
+    Size, SymmetryType,
   },
   error::{PQResult, ParseError},
   primitive_type::OptionSet,
@@ -1593,6 +1593,77 @@ impl PostProcessor {
   }
 }
 
+/// Header data of Modifier.
+/// 16 bytes
+/// https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-7
+#[derive(Debug)]
+struct ModifierHeader {
+  data_size: u64,
+  modifier_type: ModifierType,
+}
+
+impl ModifierHeader {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (rest, input) = take(16usize).parse(input)?;
+
+    let (_input, (data_size, modifier_type)) =
+      (le_u64, map_res(le_u8, |b| b.try_into())).parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        data_size,
+        modifier_type,
+      },
+    ))
+  }
+}
+
+/// Content data of Animation speed multiplier for Modifier.
+#[derive(Debug, Clone)]
+pub struct ModifierAnimationSpeedMultiplierContent {
+  id: String,
+  enabled: bool,
+  /// The multiplier.
+  /// 2 means twice as fast, 0.5 means 2 times slower.
+  multiplier: f32,
+}
+
+impl ModifierAnimationSpeedMultiplierContent {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (input, (id, enabled, multiplier)) = (string, bool, le_f32).parse(input)?;
+
+    Ok((
+      input,
+      Self {
+        id: id.to_string(),
+        enabled,
+        multiplier,
+      },
+    ))
+  }
+}
+
+/// https://docs.pixquare.art/pixquare-file/binary-specs#content-16
+#[derive(Debug, Clone)]
+pub enum Modifier {
+  AnimationSpeedMultiplier(ModifierAnimationSpeedMultiplierContent),
+}
+
+impl Modifier {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (input, header) = ModifierHeader::parse(input)?;
+
+    match header.modifier_type {
+      ModifierType::AnimationSpeedMultiplier => {
+        let (input, content) = ModifierAnimationSpeedMultiplierContent::parse(input)?;
+
+        Ok((input, Self::AnimationSpeedMultiplier(content)))
+      }
+    }
+  }
+}
+
 /// Header data of PaletteOrganization.
 /// 16 bytes
 /// https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-8
@@ -1740,6 +1811,8 @@ pub struct Artwork {
   pub is_need_timelapse: bool,
   /// Default: 0
   pub tiled_corners: Corners,
+  /// Default: []
+  pub modifiers: Vec<Modifier>,
 }
 
 impl<'a> Artwork {
@@ -1783,6 +1856,7 @@ impl<'a> Artwork {
         palette_organization,
         is_need_timelapse,
         tiled_corners,
+        modifiers,
       ),
     ) = (
       dumb_string(header.id_len as usize),
@@ -1810,6 +1884,7 @@ impl<'a> Artwork {
       PaletteOrganization::parse,
       bool,
       corners,
+      array_type(Modifier::parse),
     )
       .parse(input)?;
 
@@ -1839,6 +1914,7 @@ impl<'a> Artwork {
         palette_organization,
         is_need_timelapse,
         tiled_corners,
+        modifiers,
       },
     ))
   }
