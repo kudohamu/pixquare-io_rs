@@ -24,8 +24,8 @@ pub enum ParseError<I> {
   InvalidProcessorType,
   /// Unknown value of Modifier Type.
   InvalidModifierType,
-  /// Unknown value of Organization Type.
-  InvalidOrganizationType,
+  /// Unknown value of PaletteOrganization Type.
+  InvalidPaletteOrganizationType,
   /// Unknown value of animation direction.
   InvalidAnimationDirection,
   /// Unknown value of color depth.
@@ -48,7 +48,9 @@ impl<I> Display for ParseError<I> {
       Self::InvalidGuideLineType => write!(f, "unknown value of GuideLine Type"),
       Self::InvalidProcessorType => write!(f, "unknown value of Processor Type"),
       Self::InvalidModifierType => write!(f, "unknown value of Modifier Type"),
-      Self::InvalidOrganizationType => write!(f, "unknown value of Organization Type"),
+      Self::InvalidPaletteOrganizationType => {
+        write!(f, "unknown value of PaletteOrganization Type")
+      }
       Self::InvalidAnimationDirection => write!(f, "unknown value of animation direction"),
       Self::InvalidColorDepth => write!(f, "unknown value of color depth"),
       Self::InvalidUtf8Error(e) => write!(f, "invalid UTF-8 error: {e}"),

@@ -255,21 +255,21 @@ impl TryFrom<u8> for ModifierType {
   }
 }
 
-/// Type of Organization.
+/// Type of PaletteOrganization.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OrganizationType {
+pub enum PaletteOrganizationType {
   Packed,
   Anywhere,
 }
 
-impl TryFrom<u8> for OrganizationType {
+impl TryFrom<u8> for PaletteOrganizationType {
   type Error = ParseError<&'static [u8]>;
 
   fn try_from(v: u8) -> Result<Self, Self::Error> {
     match v {
       0 => Ok(Self::Packed),
       1 => Ok(Self::Anywhere),
-      _ => Err(ParseError::InvalidOrganizationType),
+      _ => Err(ParseError::InvalidPaletteOrganizationType),
     }
   }
 }

@@ -14,7 +14,8 @@ use crate::{
   },
   composite_type::{
     AnimationDirection, ArgbColor, BlendMode, ColorDepth, Corners, CustomDataType, EntryType,
-    FlipAxes, FxType, GuideLineType, ProcessorType, Rect, Size, SymmetryType,
+    FlipAxes, FxType, GuideLineType, PaletteOrganizationType, ProcessorType, Rect, Size,
+    SymmetryType,
   },
   error::{PQResult, ParseError},
   primitive_type::OptionSet,
@@ -132,7 +133,7 @@ impl FrameContent {
 
 /// Header data of TilemapFrameContent.
 /// 32 bytes
-/// https://docs.pixquare.art/pixquare-file/binary-specs?q=tileset#header-32-bytes-1
+/// https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-1
 #[derive(Debug)]
 struct TilemapFrameContentHeader {
   /// Size of this model.
@@ -150,7 +151,7 @@ impl TilemapFrameContentHeader {
 }
 
 /// The alignment of a tilemap cel.
-/// https://docs.pixquare.art/pixquare-file/binary-specs?q=tileset#content-2
+/// https://docs.pixquare.art/pixquare-file/binary-specs#content-2
 #[derive(Debug, Clone)]
 pub struct TilemapFrameContent {
   pub id: String,
@@ -1076,7 +1077,7 @@ impl ReferenceLayer {
 
 /// Header data of TilemapLayer.
 /// 32 bytes
-/// https://docs.pixquare.art/pixquare-file/binary-specs?q=tileset#header-32-bytes-7
+/// https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-7
 #[derive(Debug)]
 struct TilemapLayerHeader {
   /// Size of this model.
@@ -1093,7 +1094,7 @@ impl TilemapLayerHeader {
   }
 }
 
-/// https://docs.pixquare.art/pixquare-file/binary-specs?q=tileset#content-6
+/// https://docs.pixquare.art/pixquare-file/binary-specs#content-6
 #[derive(Debug, Clone)]
 pub struct TilemapLayer {
   /// ID.
@@ -1174,7 +1175,7 @@ impl TilemapLayer {
 
 /// Header data of Stats.
 /// 16 bytes
-/// https://docs.pixquare.art/pixquare-file/binary-specs?q=tileset#header-16-bytes-5
+/// https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-5
 #[derive(Debug)]
 struct StatsHeader {
   data_size: u16,
@@ -1192,7 +1193,7 @@ impl StatsHeader {
 
 /// Contains data like time spent on this file, stroke count, etc.
 /// Default: Empty stat, everything is 0
-/// https://docs.pixquare.art/pixquare-file/binary-specs?q=tileset#content-13
+/// https://docs.pixquare.art/pixquare-file/binary-specs#content-13
 #[derive(Debug, Clone)]
 pub struct Stats {
   /// Time spent in seconds.
@@ -1225,7 +1226,7 @@ impl Stats {
 }
 
 /// Settings data of grid for canvas.
-/// https://docs.pixquare.art/pixquare-file/binary-specs?q=tileset#canvasgrid
+/// https://docs.pixquare.art/pixquare-file/binary-specs#canvasgrid
 #[derive(Debug, Clone)]
 pub struct CanvasGrid {
   pub size: Size,
@@ -1250,7 +1251,7 @@ impl CanvasGrid {
 
 /// Header data of GuideLine.
 /// 14 bytes
-/// https://docs.pixquare.art/pixquare-file/binary-specs?q=tileset#header-14-bytes
+/// https://docs.pixquare.art/pixquare-file/binary-specs#header-14-bytes
 #[derive(Debug)]
 struct GuideLineHeader {
   _compat: u32,
@@ -1374,7 +1375,7 @@ impl GuideLinePerspectiveContent {
 }
 
 /// Settings data of GuideLine.
-/// https://docs.pixquare.art/pixquare-file/binary-specs?q=tileset#content-14
+/// https://docs.pixquare.art/pixquare-file/binary-specs#content-14
 #[derive(Debug, Clone)]
 pub enum GuideLine {
   Grid(GuideLineGridContent),
@@ -1408,7 +1409,7 @@ impl GuideLine {
 
 /// Header data of Post-processor.
 /// 16 bytes
-/// https://docs.pixquare.art/pixquare-file/binary-specs?q=tileset#header-16-bytes-6
+/// https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-6
 #[derive(Debug)]
 struct PostProcessorHeader {
   /// Total size of this model.
@@ -1592,6 +1593,73 @@ impl PostProcessor {
   }
 }
 
+/// Header data of PaletteOrganization.
+/// 16 bytes
+/// https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-8
+#[derive(Debug)]
+struct PaletteOrganizationHeader {
+  /// Total size of this model.
+  data_size: u16,
+  organization_type: PaletteOrganizationType,
+}
+
+impl PaletteOrganizationHeader {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (rest, input) = take(16usize).parse(input)?;
+
+    let (_input, (data_size, organization_type)) =
+      (le_u16, map_res(le_u8, |b| b.try_into())).parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        data_size,
+        organization_type,
+      },
+    ))
+  }
+}
+
+/// Content data of Anywhere for PaletteOrganization.
+#[derive(Debug, Clone)]
+pub struct PaletteOrganizationAnywhereContent {
+  pub size: Size,
+  /// The arrangement that fits into the size above.
+  /// true - empty space
+  /// false - color space
+  pub arrangements: Vec<bool>,
+}
+
+impl PaletteOrganizationAnywhereContent {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (input, (size, arrangements)) = (size, array_type(bool)).parse(input)?;
+
+    Ok((input, Self { size, arrangements }))
+  }
+}
+
+/// https://docs.pixquare.art/pixquare-file/binary-specs#content-17
+#[derive(Debug, Clone)]
+pub enum PaletteOrganization {
+  Packed,
+  Anywhere(PaletteOrganizationAnywhereContent),
+}
+
+impl PaletteOrganization {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (input, header) = PaletteOrganizationHeader::parse(input)?;
+
+    match header.organization_type {
+      PaletteOrganizationType::Packed => Ok((input, Self::Packed)),
+      PaletteOrganizationType::Anywhere => {
+        let (input, content) = PaletteOrganizationAnywhereContent::parse(input)?;
+
+        Ok((input, Self::Anywhere(content)))
+      }
+    }
+  }
+}
+
 /// Header data of Artwork.
 /// https://docs.pixquare.art/pixquare-file/binary-specs#header-64-bytes
 #[derive(Debug)]
@@ -1666,6 +1734,8 @@ pub struct Artwork {
   pub guide_line: GuideLine,
   /// Default: []
   pub post_processors: Vec<PostProcessor>,
+  /// Default: Packed
+  pub palette_organization: PaletteOrganization,
 }
 
 impl<'a> Artwork {
@@ -1704,6 +1774,7 @@ impl<'a> Artwork {
         canvas_grid,
         guide_line,
         post_processors,
+        palette_organization,
       ),
     ) = (
       dumb_string(header.id_len as usize),
@@ -1726,6 +1797,7 @@ impl<'a> Artwork {
       CanvasGrid::parse,
       GuideLine::parse,
       array_type(PostProcessor::parse),
+      PaletteOrganization::parse,
     )
       .parse(input)?;
 
@@ -1752,6 +1824,7 @@ impl<'a> Artwork {
         canvas_grid,
         guide_line,
         post_processors,
+        palette_organization,
       },
     ))
   }
