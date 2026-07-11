@@ -5,7 +5,7 @@ use std::{
 
 use nom::error::{ErrorKind, FromExternalError};
 
-/// Represent error in pixquare-loader.
+/// Represent error to parse .px file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParseError<I> {
   /// Invalid binary array or value of ArgbColor.

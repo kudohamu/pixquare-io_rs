@@ -76,7 +76,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixquare-loader"
+name = "pixquare-io"
 version = "0.1.0"
 dependencies = [
  "flate2",

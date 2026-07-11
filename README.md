@@ -1,3 +1,3 @@
-# pixquare-loader
+# pixquare-io
 
-Crate for loading pixsquare files.
+Crate for reader-writer of pixsquare files.
