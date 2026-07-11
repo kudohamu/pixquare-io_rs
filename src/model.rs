@@ -1933,7 +1933,6 @@ mod tests {
     assert!(file.is_ok());
 
     let artwork = file.unwrap();
-    println!("{:?}", artwork);
     assert_eq!(
       artwork.canvas_size,
       Size {
@@ -2016,5 +2015,53 @@ mod tests {
       }
     );
     assert!(artwork.modifiers.is_empty());
+  }
+
+  #[test]
+  fn can_parse_group_data() {
+    let path = "assets/fixtures/group.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.groups.len(), 3);
+    // Group 1
+    assert_eq!(artwork.groups[0].name, "Group 1");
+    assert_eq!(artwork.groups[0].child_entries.len(), 3);
+    assert_eq!(artwork.groups[0].opacity, f16::from_f32(1.0));
+    assert_eq!(artwork.groups[0].visible, true);
+    assert_eq!(artwork.groups[0].content_locked, false);
+    assert_eq!(artwork.groups[0].selected, true);
+    assert_eq!(artwork.groups[0].alpha_locked, true);
+    assert_eq!(artwork.groups[0].expanded, false);
+    assert!(artwork.groups[0].cropping_masks.is_empty());
+    assert_eq!(artwork.groups[0].clipping_masks.len(), 1);
+    assert_eq!(artwork.groups[0].color, ArgbColor::default());
+    // Group2
+    assert_eq!(artwork.groups[1].name, "Group 2");
+    assert_eq!(artwork.groups[1].child_entries.len(), 1);
+    assert_eq!(artwork.groups[1].opacity, f16::from_f32(1.0));
+    assert_eq!(artwork.groups[1].visible, false);
+    assert_eq!(artwork.groups[1].content_locked, true);
+    assert_eq!(artwork.groups[1].selected, false);
+    assert_eq!(artwork.groups[1].alpha_locked, false);
+    assert_eq!(artwork.groups[1].expanded, true);
+    assert!(artwork.groups[1].cropping_masks.is_empty());
+    assert!(artwork.groups[1].clipping_masks.is_empty());
+    assert_eq!(artwork.groups[1].color, ArgbColor::default());
+    // Group 3
+    assert_eq!(artwork.groups[2].name, "Group 3");
+    assert_eq!(artwork.groups[2].child_entries.len(), 1);
+    assert_eq!(artwork.groups[2].opacity, f16::from_f32(0.77));
+    assert_eq!(artwork.groups[2].visible, true);
+    assert_eq!(artwork.groups[2].content_locked, false);
+    assert_eq!(artwork.groups[2].selected, false);
+    assert_eq!(artwork.groups[2].alpha_locked, false);
+    assert_eq!(artwork.groups[2].expanded, true);
+    assert!(artwork.groups[2].cropping_masks.is_empty());
+    assert!(artwork.groups[2].clipping_masks.is_empty());
+    assert_eq!(artwork.groups[2].color, ArgbColor::new(143, 42, 42, 225));
   }
 }
