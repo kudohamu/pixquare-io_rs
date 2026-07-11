@@ -13,8 +13,8 @@ use crate::{
     option_set_u8, rect, size, string,
   },
   composite_type::{
-    AnimationDirection, ArgbColor, BlendMode, Corners, CustomDataType, EntryType, FlipAxes, FxType,
-    Rect, Size, SymmetryType,
+    AnimationDirection, ArgbColor, BlendMode, ColorDepth, Corners, CustomDataType, EntryType,
+    FlipAxes, FxType, Rect, Size, SymmetryType,
   },
   error::{PQResult, ParseError},
   primitive_type::OptionSet,
@@ -1232,6 +1232,8 @@ pub struct Artwork {
   pub tilemap_layers: Vec<TilemapLayer>,
   /// Default: []
   pub tilemap_frame_contents: Vec<TilemapFrameContent>,
+  /// Default: RGB
+  pub color_depth: ColorDepth,
 }
 
 impl<'a> Artwork {
@@ -1264,6 +1266,7 @@ impl<'a> Artwork {
         tilesets,
         tilemap_layers,
         tilemap_frame_contents,
+        color_depth,
       ),
     ) = (
       dumb_string(header.id_len as usize),
@@ -1280,6 +1283,7 @@ impl<'a> Artwork {
       array_type(Tileset::parse),
       array_type(TilemapLayer::parse),
       array_type(TilemapFrameContent::parse),
+      map_res(le_u8, |b| b.try_into()),
     )
       .parse(input)?;
 
@@ -1300,6 +1304,7 @@ impl<'a> Artwork {
         tilesets,
         tilemap_layers,
         tilemap_frame_contents,
+        color_depth,
       },
     ))
   }

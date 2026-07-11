@@ -320,3 +320,21 @@ impl TryFrom<u8> for AnimationDirection {
     }
   }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorDepth {
+  Rgb,
+  Indexed,
+}
+
+impl TryFrom<u8> for ColorDepth {
+  type Error = ParseError<&'static [u8]>;
+
+  fn try_from(value: u8) -> Result<Self, Self::Error> {
+    match value {
+      0 => Ok(Self::Rgb),
+      1 => Ok(Self::Indexed),
+      _ => Err(ParseError::InvalidColorDepth),
+    }
+  }
+}
