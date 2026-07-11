@@ -1172,6 +1172,58 @@ impl TilemapLayer {
   }
 }
 
+/// Header data of Stats.
+/// 16 bytes
+/// https://docs.pixquare.art/pixquare-file/binary-specs?q=tileset#header-16-bytes-5
+#[derive(Debug)]
+struct StatsHeader {
+  data_size: u16,
+}
+
+impl StatsHeader {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (rest, input) = take(16usize).parse(input)?;
+
+    let (_input, data_size) = le_u16.parse(input)?;
+
+    Ok((rest, Self { data_size }))
+  }
+}
+
+/// Contains data like time spent on this file, stroke count, etc.
+/// Default: Empty stat, everything is 0
+/// https://docs.pixquare.art/pixquare-file/binary-specs?q=tileset#content-13
+#[derive(Debug, Clone)]
+pub struct Stats {
+  /// Time spent in seconds.
+  pub spent: u32,
+  /// Default: 0
+  pub stroke_count: u32,
+  /// Default: 0
+  pub undos_count: u32,
+  /// Default: 0
+  pub redos_count: u32,
+}
+
+impl Stats {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (input, _header) = StatsHeader::parse(input)?;
+
+    let (input, (spent, stroke_count, undos_count, redos_count)) =
+      (le_u32, le_u32, le_u32, le_u32).parse(input)?;
+
+    Ok((
+      input,
+      Self {
+        spent,
+        stroke_count,
+        undos_count,
+        redos_count,
+      },
+    ))
+  }
+}
+
 /// Header data of Artwork.
 /// https://docs.pixquare.art/pixquare-file/binary-specs#header-64-bytes
 #[derive(Debug)]
@@ -1234,6 +1286,8 @@ pub struct Artwork {
   pub tilemap_frame_contents: Vec<TilemapFrameContent>,
   /// Default: RGB
   pub color_depth: ColorDepth,
+  /// Some stats of this file.
+  pub stats: Stats,
 }
 
 impl<'a> Artwork {
@@ -1267,6 +1321,7 @@ impl<'a> Artwork {
         tilemap_layers,
         tilemap_frame_contents,
         color_depth,
+        stats,
       ),
     ) = (
       dumb_string(header.id_len as usize),
@@ -1284,6 +1339,7 @@ impl<'a> Artwork {
       array_type(TilemapLayer::parse),
       array_type(TilemapFrameContent::parse),
       map_res(le_u8, |b| b.try_into()),
+      Stats::parse,
     )
       .parse(input)?;
 
@@ -1305,6 +1361,7 @@ impl<'a> Artwork {
         tilemap_layers,
         tilemap_frame_contents,
         color_depth,
+        stats,
       },
     ))
   }
