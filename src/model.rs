@@ -1224,6 +1224,30 @@ impl Stats {
   }
 }
 
+/// Settings data of grid for canvas.
+/// https://docs.pixquare.art/pixquare-file/binary-specs?q=tileset#canvasgrid
+#[derive(Debug, Clone)]
+pub struct CanvasGrid {
+  pub size: Size,
+  pub first_color: ArgbColor,
+  pub second_color: ArgbColor,
+}
+
+impl CanvasGrid {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (input, (size, first_color, second_color)) = (size, argb_color, argb_color).parse(input)?;
+
+    Ok((
+      input,
+      Self {
+        size,
+        first_color,
+        second_color,
+      },
+    ))
+  }
+}
+
 /// Header data of Artwork.
 /// https://docs.pixquare.art/pixquare-file/binary-specs#header-64-bytes
 #[derive(Debug)]
@@ -1290,6 +1314,9 @@ pub struct Artwork {
   pub stats: Stats,
   /// Ignore this byte.
   pub _unused: u8,
+  /// Canvas grid config.
+  /// Default: 16 x 16 Grid with blue color.
+  pub canvas_grid: CanvasGrid,
 }
 
 impl<'a> Artwork {
@@ -1325,6 +1352,7 @@ impl<'a> Artwork {
         color_depth,
         stats,
         _unused,
+        canvas_grid,
       ),
     ) = (
       dumb_string(header.id_len as usize),
@@ -1344,6 +1372,7 @@ impl<'a> Artwork {
       map_res(le_u8, |b| b.try_into()),
       Stats::parse,
       le_u8,
+      CanvasGrid::parse,
     )
       .parse(input)?;
 
@@ -1367,6 +1396,7 @@ impl<'a> Artwork {
         color_depth,
         stats,
         _unused,
+        canvas_grid,
       },
     ))
   }
