@@ -4,7 +4,7 @@ use nom::{
   bytes::take,
   combinator::{map, map_res},
   error::ErrorKind,
-  number::complete::{le_f32, le_u8, le_u16, le_u32, le_u64},
+  number::complete::{le_f32, le_f64, le_u8, le_u16, le_u32, le_u64},
 };
 
 use crate::{
@@ -14,7 +14,7 @@ use crate::{
   },
   composite_type::{
     AnimationDirection, ArgbColor, BlendMode, ColorDepth, Corners, CustomDataType, EntryType,
-    FlipAxes, FxType, GuideLineType, Rect, Size, SymmetryType,
+    FlipAxes, FxType, GuideLineType, ProcessorType, Rect, Size, SymmetryType,
   },
   error::{PQResult, ParseError},
   primitive_type::OptionSet,
@@ -1406,6 +1406,192 @@ impl GuideLine {
   }
 }
 
+/// Header data of Post-processor.
+/// 16 bytes
+/// https://docs.pixquare.art/pixquare-file/binary-specs?q=tileset#header-16-bytes-6
+#[derive(Debug)]
+struct PostProcessorHeader {
+  /// Total size of this model.
+  data_size: u16,
+  processor_type: ProcessorType,
+}
+
+impl PostProcessorHeader {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (rest, input) = take(16usize).parse(input)?;
+
+    let (_input, (data_size, processor_type)) =
+      (le_u16, map_res(le_u8, |b| b.try_into())).parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        data_size,
+        processor_type,
+      },
+    ))
+  }
+}
+
+/// Content data of CRT for Post-processor.
+#[derive(Debug, Clone)]
+pub struct PostProcessorCrtContent {
+  pub id: String,
+  pub is_pixel_independent: bool,
+  /// Scan line intensity (0-1).
+  pub scan_line_intensity: f64,
+  /// Glow intensity (0-1).
+  pub glow_intensity: f64,
+  pub enabled: bool,
+}
+
+impl PostProcessorCrtContent {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (input, (id, is_pixel_independent, scan_line_intensity, glow_intensity, enabled)) =
+      (string, bool, le_f64, le_f64, bool).parse(input)?;
+
+    Ok((
+      input,
+      Self {
+        id: id.to_string(),
+        is_pixel_independent,
+        scan_line_intensity,
+        glow_intensity,
+        enabled,
+      },
+    ))
+  }
+}
+
+/// Content data of Vignette for Post-processor.
+#[derive(Debug, Clone)]
+pub struct PostProcessorVignetteContent {
+  pub id: String,
+  pub is_pixel_independent: bool,
+  pub color: ArgbColor,
+  /// Intensity (0-1).
+  pub intensity: f64,
+  pub enabled: bool,
+}
+
+impl PostProcessorVignetteContent {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (input, (id, is_pixel_independent, color, intensity, enabled)) =
+      (string, bool, argb_color, le_f64, bool).parse(input)?;
+
+    Ok((
+      input,
+      Self {
+        id: id.to_string(),
+        is_pixel_independent,
+        color,
+        intensity,
+        enabled,
+      },
+    ))
+  }
+}
+
+/// Content data of Bloom for Post-processor.
+#[derive(Debug, Clone)]
+pub struct PostProcessorBloomContent {
+  pub id: String,
+  pub is_pixel_independent: bool,
+  /// Threshold (0-1).
+  pub threshold: f64,
+  /// Intensity (0-1).
+  pub intensity: f64,
+  /// Radius (0-1).
+  pub radius: f64,
+  pub enabled: bool,
+}
+
+impl PostProcessorBloomContent {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (input, (id, is_pixel_independent, threshold, intensity, radius, enabled)) =
+      (string, bool, le_f64, le_f64, le_f64, bool).parse(input)?;
+
+    Ok((
+      input,
+      Self {
+        id: id.to_string(),
+        is_pixel_independent,
+        threshold,
+        intensity,
+        radius,
+        enabled,
+      },
+    ))
+  }
+}
+
+/// Content data of Round pixel for Post-processor.
+#[derive(Debug, Clone)]
+pub struct PostProcessorRoundPixelContent {
+  pub id: String,
+  pub is_contiguous: bool,
+  pub background_color: ArgbColor,
+  /// Intensity (0-1).
+  pub intensity: f64,
+  pub enabled: bool,
+}
+
+impl PostProcessorRoundPixelContent {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (input, (id, is_contiguous, background_color, intensity, enabled)) =
+      (string, bool, argb_color, le_f64, bool).parse(input)?;
+
+    Ok((
+      input,
+      Self {
+        id: id.to_string(),
+        is_contiguous,
+        background_color,
+        intensity,
+        enabled,
+      },
+    ))
+  }
+}
+
+/// Settings data of Post-processor.
+#[derive(Debug, Clone)]
+pub enum PostProcessor {
+  Crt(PostProcessorCrtContent),
+  Vignette(PostProcessorVignetteContent),
+  Bloom(PostProcessorBloomContent),
+  RoundPixel(PostProcessorRoundPixelContent),
+}
+
+impl PostProcessor {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (input, header) = PostProcessorHeader::parse(input)?;
+
+    match header.processor_type {
+      ProcessorType::Crt => {
+        let (input, content) = PostProcessorCrtContent::parse(input)?;
+
+        Ok((input, Self::Crt(content)))
+      }
+      ProcessorType::Vignette => {
+        let (input, content) = PostProcessorVignetteContent::parse(input)?;
+
+        Ok((input, Self::Vignette(content)))
+      }
+      ProcessorType::Bloom => {
+        let (input, content) = PostProcessorBloomContent::parse(input)?;
+
+        Ok((input, Self::Bloom(content)))
+      }
+      ProcessorType::RoundPixel => {
+        let (input, content) = PostProcessorRoundPixelContent::parse(input)?;
+
+        Ok((input, Self::RoundPixel(content)))
+      }
+    }
+  }
+}
+
 /// Header data of Artwork.
 /// https://docs.pixquare.art/pixquare-file/binary-specs#header-64-bytes
 #[derive(Debug)]
@@ -1478,6 +1664,8 @@ pub struct Artwork {
   /// Guide line config
   /// Default: 16 x 16 Grid with blue color
   pub guide_line: GuideLine,
+  /// Default: []
+  pub post_processors: Vec<PostProcessor>,
 }
 
 impl<'a> Artwork {
@@ -1515,6 +1703,7 @@ impl<'a> Artwork {
         _unused,
         canvas_grid,
         guide_line,
+        post_processors,
       ),
     ) = (
       dumb_string(header.id_len as usize),
@@ -1536,6 +1725,7 @@ impl<'a> Artwork {
       le_u8,
       CanvasGrid::parse,
       GuideLine::parse,
+      array_type(PostProcessor::parse),
     )
       .parse(input)?;
 
@@ -1561,6 +1751,7 @@ impl<'a> Artwork {
         _unused,
         canvas_grid,
         guide_line,
+        post_processors,
       },
     ))
   }
