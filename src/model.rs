@@ -14,7 +14,7 @@ use crate::{
   },
   composite_type::{
     AnimationDirection, ArgbColor, BlendMode, ColorDepth, Corners, CustomDataType, EntryType,
-    FlipAxes, FxType, Rect, Size, SymmetryType,
+    FlipAxes, FxType, GuideLineType, Rect, Size, SymmetryType,
   },
   error::{PQResult, ParseError},
   primitive_type::OptionSet,
@@ -1248,6 +1248,164 @@ impl CanvasGrid {
   }
 }
 
+/// Header data of GuideLine.
+/// 14 bytes
+/// https://docs.pixquare.art/pixquare-file/binary-specs?q=tileset#header-14-bytes
+#[derive(Debug)]
+struct GuideLineHeader {
+  _compat: u32,
+  data_size: u16,
+  guide_line_type: GuideLineType,
+}
+
+impl GuideLineHeader {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (rest, input) = take(14usize).parse(input)?;
+
+    let (_input, (_compat, data_size, guide_line_type)) =
+      (le_u32, le_u16, map_res(le_u8, |b| b.try_into())).parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        _compat,
+        data_size,
+        guide_line_type,
+      },
+    ))
+  }
+}
+
+/// Content data of grid type for GuideLine.
+#[derive(Debug, Clone)]
+pub struct GuideLineGridContent {
+  pub size: Size,
+  pub color: ArgbColor,
+  pub visible: bool,
+  /// Show in preview.
+  pub is_shown_in_preview: bool,
+}
+
+impl GuideLineGridContent {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (input, (size, color, visible, is_shown_in_preview)) =
+      (size, argb_color, bool, bool).parse(input)?;
+
+    Ok((
+      input,
+      Self {
+        size,
+        color,
+        visible,
+        is_shown_in_preview,
+      },
+    ))
+  }
+}
+
+/// Content data of isometric type for GuideLine.
+#[derive(Debug, Clone)]
+pub struct GuideLineIsometricContent {
+  pub size: Size,
+  pub color: ArgbColor,
+  pub visible: bool,
+  /// Show in preview.
+  pub is_shown_in_preview: bool,
+}
+
+impl GuideLineIsometricContent {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (input, (size, color, visible, is_shown_in_preview)) =
+      (size, argb_color, bool, bool).parse(input)?;
+
+    Ok((
+      input,
+      Self {
+        size,
+        color,
+        visible,
+        is_shown_in_preview,
+      },
+    ))
+  }
+}
+
+/// Content data of perspective for GuideLine.
+#[derive(Debug, Clone)]
+pub struct GuideLinePerspectiveContent {
+  /// An array of x-values of perspective point coordinates.
+  pub x_coordinates: Vec<f32>,
+  /// An array of y-values of perspective point coordinates.
+  pub y_coordinates: Vec<f32>,
+  /// An array of line counts for each point.
+  pub line_counts: Vec<u32>,
+  /// Colors of each point.
+  pub colors: Vec<ArgbColor>,
+  pub visible: bool,
+  /// Show in preview.
+  pub is_shown_in_preview: bool,
+}
+
+impl GuideLinePerspectiveContent {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (input, (x_coordinates, y_coordinates, line_counts, colors, visible, is_shown_in_preview)) =
+      (
+        array_type(le_f32),
+        array_type(le_f32),
+        array_type(le_u32),
+        array_type(argb_color),
+        bool,
+        bool,
+      )
+        .parse(input)?;
+
+    Ok((
+      input,
+      Self {
+        x_coordinates,
+        y_coordinates,
+        line_counts,
+        colors,
+        visible,
+        is_shown_in_preview,
+      },
+    ))
+  }
+}
+
+/// Settings data of GuideLine.
+/// https://docs.pixquare.art/pixquare-file/binary-specs?q=tileset#content-14
+#[derive(Debug, Clone)]
+pub enum GuideLine {
+  Grid(GuideLineGridContent),
+  Isometric(GuideLineIsometricContent),
+  Perspective(GuideLinePerspectiveContent),
+}
+
+impl GuideLine {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (input, header) = GuideLineHeader::parse(input)?;
+
+    match header.guide_line_type {
+      GuideLineType::Grid => {
+        let (input, content) = GuideLineGridContent::parse(input)?;
+
+        Ok((input, Self::Grid(content)))
+      }
+      GuideLineType::Isometric => {
+        let (input, content) = GuideLineIsometricContent::parse(input)?;
+
+        Ok((input, Self::Isometric(content)))
+      }
+      GuideLineType::Perspective => {
+        let (input, content) = GuideLinePerspectiveContent::parse(input)?;
+
+        Ok((input, Self::Perspective(content)))
+      }
+    }
+  }
+}
+
 /// Header data of Artwork.
 /// https://docs.pixquare.art/pixquare-file/binary-specs#header-64-bytes
 #[derive(Debug)]
@@ -1317,6 +1475,9 @@ pub struct Artwork {
   /// Canvas grid config.
   /// Default: 16 x 16 Grid with blue color.
   pub canvas_grid: CanvasGrid,
+  /// Guide line config
+  /// Default: 16 x 16 Grid with blue color
+  pub guide_line: GuideLine,
 }
 
 impl<'a> Artwork {
@@ -1353,6 +1514,7 @@ impl<'a> Artwork {
         stats,
         _unused,
         canvas_grid,
+        guide_line,
       ),
     ) = (
       dumb_string(header.id_len as usize),
@@ -1373,6 +1535,7 @@ impl<'a> Artwork {
       Stats::parse,
       le_u8,
       CanvasGrid::parse,
+      GuideLine::parse,
     )
       .parse(input)?;
 
@@ -1397,6 +1560,7 @@ impl<'a> Artwork {
         stats,
         _unused,
         canvas_grid,
+        guide_line,
       },
     ))
   }
