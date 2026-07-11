@@ -110,8 +110,8 @@ impl FrameContentHeader {
 /// https://docs.pixquare.art/pixquare-file/binary-specs#content-1
 #[derive(Debug, Clone)]
 pub struct FrameContent {
-  id: String,
-  colors: Vec<ArgbColor>,
+  pub id: String,
+  pub colors: Vec<ArgbColor>,
 }
 
 impl FrameContent {
