@@ -6,7 +6,7 @@ use nom::{
   Parser,
   bytes::complete::take,
   combinator::map_res,
-  multi::count,
+  multi::{count, many0},
   number::complete::{le_i32, le_u8, le_u16, le_u32, le_u64},
 };
 
@@ -108,7 +108,7 @@ pub fn argb_color(input: &[u8]) -> PQResult<&[u8], ArgbColor> {
 /// Combinator for compressed argb colors ([ArgbColor]).
 pub fn compressed_colors<'a>(
   compressed_len: usize,
-) -> impl Parser<&'a [u8], Output = Vec<ArgbColor>, Error = ParseError<&'a [u8]>> {
+) -> impl Parser<&'a [u8], Output = Vec<ArgbColor>, Error = ParseError<&'a [u8]>> + Clone {
   move |input: &'a [u8]| {
     let (remaining_input, compressed_data) = take(compressed_len)(input)?;
 
@@ -116,17 +116,20 @@ pub fn compressed_colors<'a>(
     let mut decompressed_bytes = Vec::new();
     decoder
       .read_to_end(&mut decompressed_bytes)
-      .map_err(|e| nom::Err::Error(ParseError::DecompressZlibError))?;
+      .map_err(|_e| nom::Err::Error(ParseError::DecompressZlibError))?;
 
-    let (_remaining_decompressed, colors) = array_type(argb_color)
-      .parse(&decompressed_bytes)
-      .map_err(|e| match e {
-        nom::Err::Error(ParseError::Nom(_, kind)) => nom::Err::Error(ParseError::Nom(input, kind)),
-        nom::Err::Failure(ParseError::Nom(_, kind)) => {
-          nom::Err::Failure(ParseError::Nom(input, kind))
-        }
-        _ => nom::Err::Failure(ParseError::DecompressZlibError),
-      })?;
+    let (_remaining_decompressed, colors) =
+      many0(argb_color)
+        .parse(&decompressed_bytes)
+        .map_err(|e| match e {
+          nom::Err::Error(ParseError::Nom(_, kind)) => {
+            nom::Err::Error(ParseError::Nom(input, kind))
+          }
+          nom::Err::Failure(ParseError::Nom(_, kind)) => {
+            nom::Err::Failure(ParseError::Nom(input, kind))
+          }
+          _ => nom::Err::Failure(ParseError::DecompressZlibError),
+        })?;
 
     Ok((remaining_input, colors))
   }

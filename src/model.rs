@@ -1,16 +1,20 @@
+use std::io::Read;
+
+use flate2::read::ZlibDecoder;
 use half::f16;
 use nom::{
   Parser,
-  bytes::take,
+  bytes::complete::take,
   combinator::{map, map_res},
   error::ErrorKind,
+  multi::many0,
   number::complete::{le_f32, le_f64, le_u8, le_u16, le_u32, le_u64},
 };
 
 use crate::{
   combinator::{
     argb_color, array_type, blend_mode, bool, compressed_colors, corners, dumb_string, float16,
-    option_set_u8, rect, size, string,
+    option_set_u8, rect, size, string, type_n,
   },
   composite_type::{
     AnimationDirection, ArgbColor, BlendMode, ColorDepth, Corners, CustomDataType, EntryType,
@@ -165,7 +169,11 @@ impl TilemapFrameContent {
   fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (input, _header) = TilemapFrameContentHeader::parse(input)?;
 
-    let (input, (id, tile_size, tiles)) = (string, size, array_type(le_u16)).parse(input)?;
+    let (input, (id, tile_size, tiles_len)) = (string, size, le_u64).parse(input)?;
+    // Unlike the usual `[Type]` encoding, this prefix is a byte length.
+    // See the TilemapFrameContent note in the official binary-spec.
+    // `2` is byte size of each element.
+    let (input, tiles) = type_n(le_u16, (tiles_len / 2) as usize).parse(input)?;
 
     Ok((
       input,
@@ -460,7 +468,7 @@ pub struct Tileset {
   pub tile_size: Size,
   /// Compressed color data of each tile using zlib compression.
   /// After decompressing, it will be in the form of [ARGBColor].
-  pub tile_images: Vec<ArgbColor>,
+  pub tile_images: Vec<Vec<ArgbColor>>,
   /// Tiles per row.
   /// Default: 6
   pub tiles_per_row: u16,
@@ -470,20 +478,22 @@ pub struct Tileset {
 
 impl Tileset {
   fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
-    let (input, _header) = TilesetHeader::parse(input)?;
+    let (input, header) = TilesetHeader::parse(input)?;
 
-    let (input, (id, name, tile_size, tile_images, tiles_per_row, grid_color)) = (
-      string,
-      string,
-      size,
-      array_type(argb_color),
-      le_u16,
-      argb_color,
-    )
-      .parse(input)?;
+    // `data_size` covers every byte after the header.
+    // Real files can contain trailing compatibility data not documented
+    // in the Tileset content layout, so constrain parsing to the model
+    // and return the byte following that complete model rather than
+    // the byte following just the known fields.
+    let (rest, content) = take(header.data_size as usize).parse(input)?;
+
+    let (content, (id, name, tile_size)) = (string, string, size).parse(content)?;
+
+    let (_remaining_content, (tile_images, tiles_per_row, grid_color)) =
+      (array_type(Tileset::compressed_colors()), le_u16, argb_color).parse(content)?;
 
     Ok((
-      input,
+      rest,
       Self {
         id: id.to_string(),
         name: name.to_string(),
@@ -493,6 +503,38 @@ impl Tileset {
         grid_color,
       },
     ))
+  }
+
+  /// Combinator of compressed argb colors for tile images.
+  /// The Tileset documentation labels this as `[ARGBColor]`,
+  /// but each compressed tile contains the raw, consecutive ARGBColor values.
+  /// Unlike other `[Type]` values in the format, there is no leading UInt64 count.
+  fn compressed_colors<'a>()
+  -> impl Parser<&'a [u8], Output = Vec<ArgbColor>, Error = ParseError<&'a [u8]>> + Clone {
+    move |input: &'a [u8]| {
+      let (input, compressed_len) = le_u64.parse(input)?;
+      let (input, compressed_data) = take(compressed_len as usize)(input)?;
+
+      let mut decoder = ZlibDecoder::new(compressed_data);
+      let mut decompressed_bytes = Vec::new();
+      decoder
+        .read_to_end(&mut decompressed_bytes)
+        .map_err(|_e| nom::Err::Error(ParseError::DecompressZlibError))?;
+
+      let (_remaining_decompressed, colors) = many0(argb_color)
+        .parse(&decompressed_bytes)
+        .map_err(|e| match e {
+          nom::Err::Error(ParseError::Nom(_, kind)) => {
+            nom::Err::Error(ParseError::Nom(input, kind))
+          }
+          nom::Err::Failure(ParseError::Nom(_, kind)) => {
+            nom::Err::Failure(ParseError::Nom(input, kind))
+          }
+          _ => nom::Err::Failure(ParseError::DecompressZlibError),
+        })?;
+
+      Ok((input, colors))
+    }
   }
 }
 
@@ -971,7 +1013,7 @@ impl Group {
 }
 
 /// Header data of ReferenceLayer.
-/// 32 bytes.
+/// 32 bytes
 /// https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-6
 #[derive(Debug)]
 struct ReferenceLayerHeader {
@@ -1042,7 +1084,7 @@ impl ReferenceLayer {
       (id, png_data, name, opacity, visible, selected, bounds, angle, color, flip_axes_bin),
     ) = (
       dumb_string(header.id_len as usize),
-      take(header.data_size),
+      take(header.png_data_len as usize),
       dumb_string(header.name_len as usize),
       float16,
       bool,
@@ -1119,10 +1161,11 @@ pub struct TilemapLayer {
 
 impl TilemapLayer {
   fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
-    let (input, _header) = TilemapLayerHeader::parse(input)?;
+    let (input, header) = TilemapLayerHeader::parse(input)?;
+    let (rest, content) = take(header.data_size as usize).parse(input)?;
 
     let (
-      input,
+      _remaining_content,
       (
         id,
         tileset_id,
@@ -1151,10 +1194,10 @@ impl TilemapLayer {
       bool,
       argb_color,
     )
-      .parse(input)?;
+      .parse(content)?;
 
     Ok((
-      input,
+      rest,
       Self {
         id: id.to_string(),
         tileset_id: tileset_id.to_string(),
@@ -2319,7 +2362,6 @@ mod tests {
     assert!(file.is_ok());
 
     let artwork = file.unwrap();
-    println!("{:?}", artwork.layers);
     assert_eq!(artwork.layers.len(), 2);
     assert_eq!(artwork.layers[0].frames.len(), 3);
     assert_eq!(artwork.layers[1].frames.len(), 3);
@@ -2341,5 +2383,27 @@ mod tests {
     assert_eq!(frame1.id, artwork.layers[1].frames[0].id);
     assert_eq!(frame2.id, artwork.layers[1].frames[1].id);
     assert_eq!(frame3.id, artwork.layers[1].frames[2].id);
+  }
+
+  #[test]
+  fn test_parse_entry_data() {
+    let path = "assets/fixtures/entry.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.entries.len(), 5);
+    assert_eq!(artwork.tilesets.len(), 1);
+    assert_eq!(artwork.tilesets[0].name, "Tileset 1");
+    assert_eq!(artwork.tilesets[0].tile_images.len(), 2);
+    assert!(
+      artwork.tilesets[0]
+        .tile_images
+        .iter()
+        .all(|image| image.len() == 16 * 16)
+    );
+    assert_eq!(artwork.tilemap_layers.len(), 1);
   }
 }
