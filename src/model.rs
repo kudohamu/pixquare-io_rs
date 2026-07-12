@@ -1925,7 +1925,7 @@ mod tests {
   use super::*;
 
   #[test]
-  fn read_file_data() {
+  fn test_read_file_data() {
     let path = "assets/fixtures/simple.px";
     let file_data = std::fs::read(path).unwrap();
     let file = Artwork::read(&file_data);
@@ -2018,7 +2018,7 @@ mod tests {
   }
 
   #[test]
-  fn can_parse_group_data() {
+  fn test_parse_group_data() {
     let path = "assets/fixtures/group.px";
     let file_data = std::fs::read(path).unwrap();
     let file = Artwork::read(&file_data);
@@ -2063,5 +2063,283 @@ mod tests {
     assert!(artwork.groups[2].cropping_masks.is_empty());
     assert!(artwork.groups[2].clipping_masks.is_empty());
     assert_eq!(artwork.groups[2].color, ArgbColor::new(143, 42, 42, 225));
+  }
+
+  #[test]
+  fn test_parse_layer_data() {
+    let path = "assets/fixtures/layer.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.layers.len(), 7);
+    // Layer 1
+    assert_eq!(artwork.layers[0].name, "Layer 1");
+    assert_eq!(artwork.layers[0].frames.len(), 1);
+    assert_eq!(artwork.layers[0].opacity, f16::from_f32(1.0));
+    assert_eq!(artwork.layers[0].visible, true);
+    assert_eq!(artwork.layers[0].locked, false);
+    assert_eq!(artwork.layers[0].selected, false);
+    assert_eq!(artwork.layers[0].alpha_locked, false);
+    assert_eq!(artwork.layers[0].blend_mode, BlendMode::Normal);
+    assert_eq!(artwork.layers[0].linked, false);
+    assert!(artwork.layers[0].cropping_masks.is_empty());
+    assert!(artwork.layers[0].clipping_masks.is_empty());
+    assert_eq!(artwork.layers[0].color, ArgbColor::new(98, 122, 93, 255));
+    assert!(artwork.layers[0].fxs.is_empty());
+    // Layer 2
+    assert_eq!(artwork.layers[1].name, "Layer 2");
+    assert_eq!(artwork.layers[1].frames.len(), 1);
+    assert_eq!(artwork.layers[1].opacity, f16::from_f32(1.0));
+    assert_eq!(artwork.layers[1].visible, true);
+    assert_eq!(artwork.layers[1].locked, true);
+    assert_eq!(artwork.layers[1].selected, false);
+    assert_eq!(artwork.layers[1].alpha_locked, false);
+    assert_eq!(artwork.layers[1].blend_mode, BlendMode::Normal);
+    assert_eq!(artwork.layers[1].linked, true);
+    assert!(artwork.layers[1].cropping_masks.is_empty());
+    assert!(artwork.layers[1].clipping_masks.is_empty());
+    assert_eq!(artwork.layers[1].color, ArgbColor::default());
+    assert!(artwork.layers[1].fxs.is_empty());
+    // Layer 3
+    assert_eq!(artwork.layers[2].name, "Layer 3");
+    assert_eq!(artwork.layers[2].frames.len(), 1);
+    assert_eq!(artwork.layers[2].opacity, f16::from_f32(1.0));
+    assert_eq!(artwork.layers[2].visible, false);
+    assert_eq!(artwork.layers[2].locked, false);
+    assert_eq!(artwork.layers[2].selected, false);
+    assert_eq!(artwork.layers[2].alpha_locked, false);
+    assert_eq!(artwork.layers[2].blend_mode, BlendMode::Normal);
+    assert_eq!(artwork.layers[2].linked, false);
+    assert!(artwork.layers[2].cropping_masks.is_empty());
+    assert!(artwork.layers[2].clipping_masks.is_empty());
+    assert_eq!(artwork.layers[2].color, ArgbColor::default());
+    assert!(artwork.layers[2].fxs.is_empty());
+    // Layer 4
+    assert_eq!(artwork.layers[3].name, "Layer 4");
+    assert_eq!(artwork.layers[3].frames.len(), 1);
+    assert_eq!(artwork.layers[3].opacity, f16::from_f32(0.58));
+    assert_eq!(artwork.layers[3].visible, true);
+    assert_eq!(artwork.layers[3].locked, false);
+    assert_eq!(artwork.layers[3].selected, true);
+    assert_eq!(artwork.layers[3].alpha_locked, true);
+    assert_eq!(artwork.layers[3].blend_mode, BlendMode::Normal);
+    assert_eq!(artwork.layers[3].linked, false);
+    assert!(artwork.layers[3].cropping_masks.is_empty());
+    assert_eq!(artwork.layers[3].clipping_masks.len(), 1);
+    assert_eq!(artwork.layers[3].color, ArgbColor::default());
+    assert!(artwork.layers[3].fxs.is_empty());
+    // Layer 5
+    assert_eq!(artwork.layers[4].name, "Layer 5");
+    assert_eq!(artwork.layers[4].frames.len(), 1);
+    assert_eq!(artwork.layers[4].opacity, f16::from_f32(1.0));
+    assert_eq!(artwork.layers[4].visible, true);
+    assert_eq!(artwork.layers[4].locked, false);
+    assert_eq!(artwork.layers[4].selected, false);
+    assert_eq!(artwork.layers[4].alpha_locked, false);
+    assert_eq!(artwork.layers[4].blend_mode, BlendMode::Normal);
+    assert_eq!(artwork.layers[4].linked, false);
+    assert!(artwork.layers[4].cropping_masks.is_empty());
+    assert!(artwork.layers[4].clipping_masks.is_empty());
+    assert_eq!(artwork.layers[4].color, ArgbColor::default());
+    assert!(artwork.layers[4].fxs.is_empty());
+    // Layer 6
+    assert_eq!(artwork.layers[5].name, "Layer 6");
+    assert_eq!(artwork.layers[5].frames.len(), 1);
+    assert_eq!(artwork.layers[5].opacity, f16::from_f32(1.0));
+    assert_eq!(artwork.layers[5].visible, true);
+    assert_eq!(artwork.layers[5].locked, false);
+    assert_eq!(artwork.layers[5].selected, false);
+    assert_eq!(artwork.layers[5].alpha_locked, false);
+    assert_eq!(artwork.layers[5].blend_mode, BlendMode::Overlay);
+    assert_eq!(artwork.layers[5].linked, false);
+    assert_eq!(artwork.layers[5].cropping_masks.len(), 1);
+    assert!(artwork.layers[5].clipping_masks.is_empty());
+    assert_eq!(artwork.layers[5].color, ArgbColor::default());
+    assert!(artwork.layers[5].fxs.is_empty());
+    // Layer 7
+    assert_eq!(artwork.layers[6].name, "Layer 7");
+    assert_eq!(artwork.layers[6].frames.len(), 1);
+    assert_eq!(artwork.layers[6].opacity, f16::from_f32(1.0));
+    assert_eq!(artwork.layers[6].visible, true);
+    assert_eq!(artwork.layers[6].locked, false);
+    assert_eq!(artwork.layers[6].selected, false);
+    assert_eq!(artwork.layers[6].alpha_locked, false);
+    assert_eq!(artwork.layers[6].blend_mode, BlendMode::Normal);
+    assert_eq!(artwork.layers[6].linked, false);
+    assert!(artwork.layers[6].cropping_masks.is_empty());
+    assert!(artwork.layers[6].clipping_masks.is_empty());
+    assert_eq!(artwork.layers[6].color, ArgbColor::default());
+    assert!(artwork.layers[6].fxs.is_empty());
+  }
+
+  #[test]
+  fn test_parse_layer_fx_data() {
+    let path = "assets/fixtures/layer-fx.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.layers.len(), 3);
+    assert_eq!(artwork.layers[0].name, "Layer 1");
+    assert_eq!(artwork.layers[0].fxs.len(), 1);
+    let Fx::PatternOverlary(fx) = &artwork.layers[0].fxs[0] else {
+      panic!("expected Fx::PatternOverlary");
+    };
+    assert_eq!(fx.enabled, true);
+    assert_eq!(
+      fx.patterns.len(),
+      (fx.pattern_size.width * fx.pattern_size.height) as usize
+    );
+    assert_eq!(fx.pattern_size, Size::new(8, 8));
+    assert_eq!(fx.opacity, 0.8);
+    assert_eq!(fx.blend_mode, BlendMode::Overlay);
+
+    assert_eq!(artwork.layers[1].name, "Layer 2");
+    assert_eq!(artwork.layers[1].fxs.len(), 1);
+    let Fx::ColorOverlay(fx) = &artwork.layers[1].fxs[0] else {
+      panic!(
+        "expected Fx::ColorOverlay, actual {:?}",
+        &artwork.layers[1].fxs[0]
+      );
+    };
+    assert_eq!(fx.enabled, true);
+    assert_eq!(fx.color, ArgbColor::new(183, 166, 167, 212));
+    assert_eq!(fx.blend_mode, BlendMode::Screen);
+
+    assert_eq!(artwork.layers[2].name, "Layer 3");
+    assert_eq!(artwork.layers[2].fxs.len(), 2);
+    let Fx::Outline(fx) = &artwork.layers[2].fxs[0] else {
+      panic!(
+        "expected Fx::Outline, actual {:?}",
+        &artwork.layers[2].fxs[0]
+      );
+    };
+    assert_eq!(fx.enabled, true);
+    assert_eq!(
+      fx.corners,
+      Corners {
+        top_left: true,
+        top: true,
+        right: true,
+        left: true,
+        bottom: true,
+        ..Default::default()
+      }
+    );
+    assert_eq!(fx.ignored_colors.len(), 1);
+    assert_eq!(fx.ignored_colors[0], ArgbColor::new(121, 58, 128, 255));
+    assert_eq!(fx.is_outside, true);
+    assert_eq!(fx.is_water_color_on, true);
+
+    let Fx::AntiAliasing(fx) = &artwork.layers[2].fxs[1] else {
+      panic!(
+        "expected Fx::AntiAliasing, actual {:?}",
+        &artwork.layers[2].fxs[1]
+      );
+    };
+    assert_eq!(fx.enabled, true);
+    assert_eq!(fx.corners.len(), 7);
+    assert_eq!(
+      fx.corners[0],
+      Corners {
+        top: true,
+        left: true,
+        bottom_left: true,
+        ..Default::default()
+      }
+    );
+    assert_eq!(
+      fx.corners[1],
+      Corners {
+        top: true,
+        right: true,
+        bottom_right: true,
+        ..Default::default()
+      }
+    );
+    assert_eq!(
+      fx.corners[2],
+      Corners {
+        top_left: true,
+        left: true,
+        bottom: true,
+        ..Default::default()
+      }
+    );
+    assert_eq!(
+      fx.corners[3],
+      Corners {
+        top_right: true,
+        right: true,
+        bottom: true,
+        ..Default::default()
+      }
+    );
+    assert_eq!(
+      fx.corners[4],
+      Corners {
+        top: true,
+        top_right: true,
+        left: true,
+        ..Default::default()
+      }
+    );
+    assert_eq!(
+      fx.corners[5],
+      Corners {
+        left: true,
+        bottom: true,
+        bottom_right: true,
+        ..Default::default()
+      }
+    );
+    assert_eq!(
+      fx.corners[6],
+      Corners {
+        right: true,
+        bottom_left: true,
+        bottom: true,
+        ..Default::default()
+      }
+    );
+    assert_eq!(fx.intensity, 0.5);
+  }
+
+  #[test]
+  fn test_parse_layer_frame_data() {
+    let path = "assets/fixtures/layer-frame.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    println!("{:?}", artwork.layers);
+    assert_eq!(artwork.layers.len(), 2);
+    assert_eq!(artwork.layers[0].frames.len(), 3);
+    assert_eq!(artwork.layers[1].frames.len(), 3);
+    let frame1 = &artwork.layers[0].frames[0];
+    assert_eq!(frame1.duration, 155);
+    assert_eq!(frame1.selected, false);
+    assert_eq!(frame1.opacity, f16::from_f32(2.0));
+    assert_eq!(frame1.z_index, 0);
+    let frame2 = &artwork.layers[0].frames[1];
+    assert_eq!(frame2.duration, 155);
+    assert_eq!(frame2.selected, true);
+    assert_eq!(frame2.opacity, f16::from_f32(2.0));
+    assert_eq!(frame2.z_index, 0);
+    let frame3 = &artwork.layers[0].frames[2];
+    assert_eq!(frame3.duration, 100);
+    assert_eq!(frame3.selected, false);
+    assert_eq!(frame3.opacity, f16::from_f32(2.0));
+    assert_eq!(frame3.z_index, 0);
+    assert_eq!(frame1.id, artwork.layers[1].frames[0].id);
+    assert_eq!(frame2.id, artwork.layers[1].frames[1].id);
+    assert_eq!(frame3.id, artwork.layers[1].frames[2].id);
   }
 }

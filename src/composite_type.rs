@@ -14,6 +14,12 @@ pub struct Size {
   pub height: u32,
 }
 
+impl Size {
+  pub fn new(width: u32, height: u32) -> Self {
+    Self { width, height }
+  }
+}
+
 /// https://docs.pixquare.art/pixquare-file/binary-specs#rect
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rect {
@@ -63,7 +69,7 @@ impl TryFrom<&[u8]> for ArgbColor {
 }
 
 /// https://docs.pixquare.art/pixquare-file/binary-specs#corners
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Corners {
   pub top_left: bool,
   pub top: bool,
@@ -170,8 +176,8 @@ impl TryFrom<u8> for FxType {
     match v {
       0 => Ok(Self::ColorOverlay),
       1 => Ok(Self::Outline),
-      3 => Ok(Self::AntiAliasing),
-      4 => Ok(Self::PatternOverlay),
+      2 => Ok(Self::AntiAliasing),
+      3 => Ok(Self::PatternOverlay),
       _ => Err(ParseError::InvalidFxType),
     }
   }
