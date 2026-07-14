@@ -531,7 +531,7 @@ impl Tileset {
       string,
       string,
       size,
-      array_type(Tileset::compressed_colors()),
+      array_type(Tileset::compressed_colors),
       le_u16,
       argb_color,
     )
@@ -555,19 +555,18 @@ impl Tileset {
   /// The Tileset documentation labels this as `[ARGBColor]`,
   /// but each compressed tile contains the raw, consecutive ARGBColor values.
   /// Unlike other `[Type]` values in the format, there is no leading UInt64 count.
-  fn compressed_colors<'a>()
-  -> impl Parser<&'a [u8], Output = Vec<ArgbColor>, Error = ParseError<&'a [u8]>> + Clone {
-    move |input: &'a [u8]| {
-      let (input, compressed_len) = le_u64.parse(input)?;
-      let (input, compressed_data) = take(compressed_len as usize)(input)?;
+  fn compressed_colors(input: &[u8]) -> PQResult<&[u8], Vec<ArgbColor>> {
+    let (input, compressed_len) = le_u64.parse(input)?;
+    let (input, compressed_data) = take(compressed_len as usize)(input)?;
 
-      let mut decoder = ZlibDecoder::new(compressed_data);
-      let mut decompressed_bytes = Vec::new();
-      decoder
-        .read_to_end(&mut decompressed_bytes)
-        .map_err(|_e| nom::Err::Error(ParseError::DecompressZlibError))?;
+    let mut decoder = ZlibDecoder::new(compressed_data);
+    let mut decompressed_bytes = Vec::new();
+    decoder
+      .read_to_end(&mut decompressed_bytes)
+      .map_err(|_e| nom::Err::Error(ParseError::DecompressZlibError))?;
 
-      let (_remaining_decompressed, colors) = many0(argb_color)
+    let (_remaining_decompressed, colors) =
+      many0(argb_color)
         .parse(&decompressed_bytes)
         .map_err(|e| match e {
           nom::Err::Error(ParseError::Nom(_, kind)) => {
@@ -579,8 +578,7 @@ impl Tileset {
           _ => nom::Err::Failure(ParseError::DecompressZlibError),
         })?;
 
-      Ok((input, colors))
-    }
+    Ok((input, colors))
   }
 }
 
