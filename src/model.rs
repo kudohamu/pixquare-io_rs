@@ -52,11 +52,37 @@ impl CustomDataHeader {
   }
 }
 
+/// Content data of string for CustomData.
+#[derive(Debug, Clone)]
+pub struct CustomDataStringContent {
+  pub content: String,
+  remaining_data: Vec<u8>,
+}
+
+impl<'a> CustomDataStringContent {
+  fn parser(
+    data_size: usize,
+  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
+    move |input| {
+      let (rest, input) = take(data_size).parse(input)?;
+      let (remaining_data, str) = string(input)?;
+
+      Ok((
+        rest,
+        Self {
+          content: str.to_string(),
+          remaining_data: remaining_data.into(),
+        },
+      ))
+    }
+  }
+}
+
 /// Store some custom data set by the users.
 /// https://docs.pixquare.art/pixquare-file/binary-specs#content
 #[derive(Debug, Clone)]
 pub enum CustomData {
-  String(String),
+  String(CustomDataStringContent),
 }
 
 impl CustomData {
@@ -65,9 +91,10 @@ impl CustomData {
 
     match header.data_type {
       CustomDataType::String => {
-        let (input, str) = string(input)?;
+        let (input, content) =
+          CustomDataStringContent::parser(header.data_size as usize).parse(input)?;
 
-        Ok((input, Self::String(str.to_string())))
+        Ok((input, Self::String(content)))
       }
     }
   }
@@ -116,20 +143,24 @@ impl FrameContentHeader {
 pub struct FrameContent {
   pub id: String,
   pub colors: Vec<ArgbColor>,
+  remaining_data: Vec<u8>,
 }
 
 impl FrameContent {
   fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (input, header) = FrameContentHeader::parse(input)?;
+    let (rest, input) = take(header.data_size as usize).parse(input)?;
 
     let (input, id) = dumb_string(header.id_len as usize).parse(input)?;
-    let (input, colors) = compressed_colors(header.compressed_color_len as usize).parse(input)?;
+    let (remaining_data, colors) =
+      compressed_colors(header.compressed_color_len as usize).parse(input)?;
 
     Ok((
-      input,
+      rest,
       Self {
         id: id.to_string(),
         colors,
+        remaining_data: remaining_data.into(),
       },
     ))
   }
@@ -163,24 +194,26 @@ pub struct TilemapFrameContent {
   /// Alignment of tile on the canvas.
   /// UInt16.max is for unassigned tiles.
   pub tiles: Vec<u16>,
+  remaining_data: Vec<u8>,
 }
 
 impl TilemapFrameContent {
   fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
-    let (input, _header) = TilemapFrameContentHeader::parse(input)?;
+    let (input, header) = TilemapFrameContentHeader::parse(input)?;
+    let (rest, input) = take(header.data_size as usize).parse(input)?;
 
     let (input, (id, tile_size, tiles_len)) = (string, size, le_u64).parse(input)?;
-    // Unlike the usual `[Type]` encoding, this prefix is a byte length.
-    // See the TilemapFrameContent note in the official binary-spec.
+    // this prefix is a byte length, not array length.
     // `2` is byte size of each element.
-    let (input, tiles) = type_n(le_u16, (tiles_len / 2) as usize).parse(input)?;
+    let (remaining_data, tiles) = type_n(le_u16, (tiles_len / 2) as usize).parse(input)?;
 
     Ok((
-      input,
+      rest,
       Self {
         id: id.to_string(),
         tile_size,
         tiles,
+        remaining_data: remaining_data.into(),
       },
     ))
   }
@@ -239,13 +272,15 @@ pub struct Frame {
   pub z_index: u16,
   /// Custom datas set by the users.
   pub custom_datas: Vec<CustomData>,
+  remaining_data: Vec<u8>,
 }
 
 impl Frame {
   fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (input, header) = FrameHeader::parse(input)?;
+    let (rest, input) = take(header.data_size as usize).parse(input)?;
 
-    let (input, (id, duration, selected, content_id, opacity, z_index, custom_datas)) = (
+    let (remaining_data, (id, duration, selected, content_id, opacity, z_index, custom_datas)) = (
       dumb_string(header.id_len as usize),
       le_u32,
       bool,
@@ -257,7 +292,7 @@ impl Frame {
       .parse(input)?;
 
     Ok((
-      input,
+      rest,
       Self {
         id: id.to_string(),
         duration,
@@ -266,6 +301,7 @@ impl Frame {
         opacity,
         z_index,
         custom_datas,
+        remaining_data: remaining_data.into(),
       },
     ))
   }
@@ -319,14 +355,16 @@ pub struct SymmetryLine {
   pub angle: f32,
   pub segment_count: u8,
   pub symmetry_type: SymmetryType,
+  remaining_data: Vec<u8>,
 }
 
 impl SymmetryLine {
   fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (input, header) = SymmetryLineHeader::parse(input)?;
+    let (rest, input) = take(header.data_size as usize).parse(input)?;
 
     let (
-      input,
+      remaining_data,
       (id, color, selected, enabled, origin_x, origin_y, angle, segment_count, symmetry_type),
     ) = (
       dumb_string(header.id_len as usize),
@@ -342,7 +380,7 @@ impl SymmetryLine {
       .parse(input)?;
 
     Ok((
-      input,
+      rest,
       Self {
         id: id.to_string(),
         color,
@@ -353,6 +391,7 @@ impl SymmetryLine {
         angle,
         segment_count,
         symmetry_type,
+        remaining_data: remaining_data.into(),
       },
     ))
   }
@@ -406,13 +445,18 @@ pub struct Tag {
   pub color: ArgbColor,
   pub direction: AnimationDirection,
   pub loop_count: u16,
+  remaining_data: Vec<u8>,
 }
 
 impl Tag {
   fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (input, header) = TagHeader::parse(input)?;
+    let (rest, input) = take(header.data_size as usize).parse(input)?;
 
-    let (input, (id, name, start_index, end_index, selected, color, direction, loop_count)) = (
+    let (
+      remaining_data,
+      (id, name, start_index, end_index, selected, color, direction, loop_count),
+    ) = (
       dumb_string(header.id_len as usize),
       dumb_string(header.name_len as usize),
       le_u16,
@@ -425,7 +469,7 @@ impl Tag {
       .parse(input)?;
 
     Ok((
-      input,
+      rest,
       Self {
         id: id.to_string(),
         name: name.to_string(),
@@ -435,6 +479,7 @@ impl Tag {
         color,
         direction,
         loop_count,
+        remaining_data: remaining_data.into(),
       },
     ))
   }
@@ -474,23 +519,23 @@ pub struct Tileset {
   pub tiles_per_row: u16,
   /// Default: Black
   pub grid_color: ArgbColor,
+  remaining_data: Vec<u8>,
 }
 
 impl Tileset {
   fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (input, header) = TilesetHeader::parse(input)?;
+    let (rest, input) = take(header.data_size as usize).parse(input)?;
 
-    // `data_size` covers every byte after the header.
-    // Real files can contain trailing compatibility data not documented
-    // in the Tileset content layout, so constrain parsing to the model
-    // and return the byte following that complete model rather than
-    // the byte following just the known fields.
-    let (rest, content) = take(header.data_size as usize).parse(input)?;
-
-    let (content, (id, name, tile_size)) = (string, string, size).parse(content)?;
-
-    let (_remaining_content, (tile_images, tiles_per_row, grid_color)) =
-      (array_type(Tileset::compressed_colors()), le_u16, argb_color).parse(content)?;
+    let (remaining_data, (id, name, tile_size, tile_images, tiles_per_row, grid_color)) = (
+      string,
+      string,
+      size,
+      array_type(Tileset::compressed_colors()),
+      le_u16,
+      argb_color,
+    )
+      .parse(input)?;
 
     Ok((
       rest,
@@ -501,6 +546,7 @@ impl Tileset {
         tile_images,
         tiles_per_row,
         grid_color,
+        remaining_data: remaining_data.into(),
       },
     ))
   }
@@ -564,17 +610,29 @@ pub struct FxColorOverlayContent {
   pub enabled: bool,
   pub color: ArgbColor,
   pub blend_mode: BlendMode,
+  remaining_data: Vec<u8>,
 }
 
-impl FxColorOverlayContent {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
-    (bool, argb_color, blend_mode)
-      .map(|(enabled, color, blend_mode)| Self {
-        enabled,
-        color,
-        blend_mode,
-      })
-      .parse(input)
+impl<'a> FxColorOverlayContent {
+  fn parser(
+    data_size: usize,
+  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
+    move |input| {
+      let (rest, input) = take(data_size).parse(input)?;
+
+      let (remaining_data, (enabled, color, blend_mode)) =
+        (bool, argb_color, blend_mode).parse(input)?;
+
+      Ok((
+        rest,
+        Self {
+          enabled,
+          color,
+          blend_mode,
+          remaining_data: remaining_data.into(),
+        },
+      ))
+    }
   }
 }
 
@@ -590,29 +648,40 @@ pub struct FxOutlineContent {
   /// false - inside
   pub is_outside: bool,
   pub is_water_color_on: bool,
+  remaining_data: Vec<u8>,
 }
 
-impl FxOutlineContent {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
-    (
-      bool,
-      corners,
-      argb_color,
-      array_type(argb_color),
-      bool,
-      bool,
-    )
-      .map(
-        |(enabled, corners, color, ignored_colors, is_outside, is_water_color_on)| Self {
+impl<'a> FxOutlineContent {
+  fn parser(
+    data_size: usize,
+  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
+    move |input| {
+      let (rest, input) = take(data_size).parse(input)?;
+
+      let (remainig_data, (enabled, corners, color, ignored_colors, is_outside, is_water_color_on)) =
+        (
+          bool,
+          corners,
+          argb_color,
+          array_type(argb_color),
+          bool,
+          bool,
+        )
+          .parse(input)?;
+
+      Ok((
+        rest,
+        Self {
           enabled,
           corners,
           color,
           ignored_colors,
           is_outside,
           is_water_color_on,
+          remaining_data: remainig_data.into(),
         },
-      )
-      .parse(input)
+      ))
+    }
   }
 }
 
@@ -623,17 +692,28 @@ pub struct FxAntiAliasingContent {
   /// Set of corners.
   pub corners: Vec<Corners>,
   pub intensity: f32,
+  remaining_data: Vec<u8>,
 }
 
-impl FxAntiAliasingContent {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
-    (bool, array_type(corners), le_f32)
-      .map(|(enabled, corners, intensity)| Self {
-        enabled,
-        corners,
-        intensity,
-      })
-      .parse(input)
+impl<'a> FxAntiAliasingContent {
+  fn parser(
+    data_size: usize,
+  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
+    move |input| {
+      let (rest, input) = take(data_size).parse(input)?;
+      let (remaining_data, (enabled, corners, intensity)) =
+        (bool, array_type(corners), le_f32).parse(input)?;
+
+      Ok((
+        rest,
+        Self {
+          enabled,
+          corners,
+          intensity,
+          remaining_data: remaining_data.into(),
+        },
+      ))
+    }
   }
 }
 
@@ -645,27 +725,36 @@ pub struct FxPatternOverlaryContent {
   pub pattern_size: Size,
   pub opacity: f32,
   pub blend_mode: BlendMode,
+  remaining_data: Vec<u8>,
 }
 
-impl FxPatternOverlaryContent {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
-    (
-      bool,
-      array_type(le_u8).map_res(|data| data.chunks(4).map(|chunk| chunk.try_into()).collect()),
-      size,
-      le_f32,
-      blend_mode,
-    )
-      .map(
-        |(enabled, patterns, pattern_size, opacity, blend_mode)| Self {
+impl<'a> FxPatternOverlaryContent {
+  fn parser(
+    data_size: usize,
+  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
+    move |input| {
+      let (rest, input) = take(data_size).parse(input)?;
+      let (remaining_data, (enabled, patterns, pattern_size, opacity, blend_mode)) = (
+        bool,
+        array_type(le_u8).map_res(|data| data.chunks(4).map(|chunk| chunk.try_into()).collect()),
+        size,
+        le_f32,
+        blend_mode,
+      )
+        .parse(input)?;
+
+      Ok((
+        rest,
+        Self {
           enabled,
           patterns,
           pattern_size,
           opacity,
           blend_mode,
+          remaining_data: remaining_data.into(),
         },
-      )
-      .parse(input)
+      ))
+    }
   }
 }
 
@@ -685,22 +774,25 @@ impl Fx {
 
     match header.fx_type {
       FxType::ColorOverlay => {
-        let (input, content) = FxColorOverlayContent::parse(input)?;
+        let (input, content) =
+          FxColorOverlayContent::parser(header.data_size as usize).parse(input)?;
 
         Ok((input, Fx::ColorOverlay(content)))
       }
       FxType::Outline => {
-        let (input, content) = FxOutlineContent::parse(input)?;
+        let (input, content) = FxOutlineContent::parser(header.data_size as usize).parse(input)?;
 
         Ok((input, Fx::Outline(content)))
       }
       FxType::AntiAliasing => {
-        let (input, content) = FxAntiAliasingContent::parse(input)?;
+        let (input, content) =
+          FxAntiAliasingContent::parser(header.data_size as usize).parse(input)?;
 
         Ok((input, Fx::AntiAliasing(content)))
       }
       FxType::PatternOverlay => {
-        let (input, content) = FxPatternOverlaryContent::parse(input)?;
+        let (input, content) =
+          FxPatternOverlaryContent::parser(header.data_size as usize).parse(input)?;
 
         Ok((input, Fx::PatternOverlary(content)))
       }
@@ -744,21 +836,23 @@ pub struct Entry {
   /// ID.
   /// This ID is the same as the ID of `Layer`, `ReferenceLayer`, `Group`, and `TilemapLayer`.
   pub id: String,
+  remaining_data: Vec<u8>,
 }
 
 impl Entry {
   fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (input, header) = EntryHeader::parse(input)?;
-
     let (rest, input) = take(header.data_size).parse(input)?;
+
     let (input, id_len) = le_u8(input)?;
-    let (_input, id) = dumb_string(id_len as usize).parse(input)?;
+    let (remaining_data, id) = dumb_string(id_len as usize).parse(input)?;
 
     Ok((
       rest,
       Self {
         id_len,
         id: id.to_string(),
+        remaining_data: remaining_data.into(),
       },
     ))
   }
@@ -827,14 +921,16 @@ pub struct Layer {
   pub color: ArgbColor,
   /// Default: []
   pub fxs: Vec<Fx>,
+  remaining_data: Vec<u8>,
 }
 
 impl Layer {
   fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (input, header) = LayerHeader::parse(input)?;
+    let (rest, input) = take(header.data_size as usize).parse(input)?;
 
     let (
-      input,
+      remaining_data,
       (
         id,
         name,
@@ -870,7 +966,7 @@ impl Layer {
       .parse(input)?;
 
     Ok((
-      input,
+      rest,
       Self {
         id: id.to_string(),
         name: name.to_string(),
@@ -886,6 +982,7 @@ impl Layer {
         clipping_masks,
         color,
         fxs,
+        remaining_data: remaining_data.into(),
       },
     ))
   }
@@ -953,15 +1050,16 @@ pub struct Group {
   /// Color.
   /// Default: (0, 0, 0, 0).
   pub color: ArgbColor,
+  remaining_data: Vec<u8>,
 }
 
 impl Group {
   fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (input, header) = GroupHeader::parse(input)?;
-
     let (rest, input) = take(header.data_size).parse(input)?;
+
     let (
-      _input,
+      remaining_data,
       (
         id,
         name,
@@ -1007,6 +1105,7 @@ impl Group {
         cropping_masks,
         clipping_masks,
         color,
+        remaining_data: remaining_data.into(),
       },
     ))
   }
@@ -1073,14 +1172,16 @@ pub struct ReferenceLayer {
   /// OptionSet<UInt8>
   /// Default: 0
   pub flip_axes: FlipAxes,
+  remaining_data: Vec<u8>,
 }
 
 impl ReferenceLayer {
   fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (input, header) = ReferenceLayerHeader::parse(input)?;
+    let (rest, input) = take(header.data_size).parse(input)?;
 
     let (
-      input,
+      remaining_data,
       (id, png_data, name, opacity, visible, selected, bounds, angle, color, flip_axes_bin),
     ) = (
       dumb_string(header.id_len as usize),
@@ -1097,7 +1198,7 @@ impl ReferenceLayer {
       .parse(input)?;
 
     Ok((
-      input,
+      rest,
       Self {
         id: id.to_string(),
         png_data: png_data.into(),
@@ -1112,6 +1213,7 @@ impl ReferenceLayer {
           horizontal: flip_axes_bin.flag(0),
           vertical: flip_axes_bin.flag(1),
         },
+        remaining_data: remaining_data.into(),
       },
     ))
   }
@@ -1157,15 +1259,16 @@ pub struct TilemapLayer {
   pub linked: bool,
   /// Default: (0, 0, 0, 0)
   pub color: ArgbColor,
+  remaining_data: Vec<u8>,
 }
 
 impl TilemapLayer {
   fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (input, header) = TilemapLayerHeader::parse(input)?;
-    let (rest, content) = take(header.data_size as usize).parse(input)?;
+    let (rest, input) = take(header.data_size as usize).parse(input)?;
 
     let (
-      _remaining_content,
+      remaining_content,
       (
         id,
         tileset_id,
@@ -1194,7 +1297,7 @@ impl TilemapLayer {
       bool,
       argb_color,
     )
-      .parse(content)?;
+      .parse(input)?;
 
     Ok((
       rest,
@@ -1211,6 +1314,7 @@ impl TilemapLayer {
         blend_mode,
         linked,
         color,
+        remaining_data: remaining_content.into(),
       },
     ))
   }
@@ -1247,22 +1351,25 @@ pub struct Stats {
   pub undos_count: u32,
   /// Default: 0
   pub redos_count: u32,
+  remaining_data: Vec<u8>,
 }
 
 impl Stats {
   fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
-    let (input, _header) = StatsHeader::parse(input)?;
+    let (input, header) = StatsHeader::parse(input)?;
+    let (rest, input) = take(header.data_size as usize).parse(input)?;
 
-    let (input, (spent, stroke_count, undos_count, redos_count)) =
+    let (remaining_data, (spent, stroke_count, undos_count, redos_count)) =
       (le_u32, le_u32, le_u32, le_u32).parse(input)?;
 
     Ok((
-      input,
+      rest,
       Self {
         spent,
         stroke_count,
         undos_count,
         redos_count,
+        remaining_data: remaining_data.into(),
       },
     ))
   }
@@ -1328,22 +1435,29 @@ pub struct GuideLineGridContent {
   pub visible: bool,
   /// Show in preview.
   pub is_shown_in_preview: bool,
+  remaining_data: Vec<u8>,
 }
 
-impl GuideLineGridContent {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
-    let (input, (size, color, visible, is_shown_in_preview)) =
-      (size, argb_color, bool, bool).parse(input)?;
+impl<'a> GuideLineGridContent {
+  fn parser(
+    data_size: usize,
+  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
+    move |input| {
+      let (rest, input) = take(data_size).parse(input)?;
+      let (remaining_data, (size, color, visible, is_shown_in_preview)) =
+        (size, argb_color, bool, bool).parse(input)?;
 
-    Ok((
-      input,
-      Self {
-        size,
-        color,
-        visible,
-        is_shown_in_preview,
-      },
-    ))
+      Ok((
+        rest,
+        Self {
+          size,
+          color,
+          visible,
+          is_shown_in_preview,
+          remaining_data: remaining_data.into(),
+        },
+      ))
+    }
   }
 }
 
@@ -1355,22 +1469,29 @@ pub struct GuideLineIsometricContent {
   pub visible: bool,
   /// Show in preview.
   pub is_shown_in_preview: bool,
+  remaining_data: Vec<u8>,
 }
 
-impl GuideLineIsometricContent {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
-    let (input, (size, color, visible, is_shown_in_preview)) =
-      (size, argb_color, bool, bool).parse(input)?;
+impl<'a> GuideLineIsometricContent {
+  fn parser(
+    data_size: usize,
+  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
+    move |input| {
+      let (rest, input) = take(data_size).parse(input)?;
+      let (remaining_data, (size, color, visible, is_shown_in_preview)) =
+        (size, argb_color, bool, bool).parse(input)?;
 
-    Ok((
-      input,
-      Self {
-        size,
-        color,
-        visible,
-        is_shown_in_preview,
-      },
-    ))
+      Ok((
+        rest,
+        Self {
+          size,
+          color,
+          visible,
+          is_shown_in_preview,
+          remaining_data: remaining_data.into(),
+        },
+      ))
+    }
   }
 }
 
@@ -1388,12 +1509,19 @@ pub struct GuideLinePerspectiveContent {
   pub visible: bool,
   /// Show in preview.
   pub is_shown_in_preview: bool,
+  remaining_data: Vec<u8>,
 }
 
-impl GuideLinePerspectiveContent {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
-    let (input, (x_coordinates, y_coordinates, line_counts, colors, visible, is_shown_in_preview)) =
-      (
+impl<'a> GuideLinePerspectiveContent {
+  fn parser(
+    data_size: usize,
+  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
+    move |input| {
+      let (rest, input) = take(data_size).parse(input)?;
+      let (
+        remaining_data,
+        (x_coordinates, y_coordinates, line_counts, colors, visible, is_shown_in_preview),
+      ) = (
         array_type(le_f32),
         array_type(le_f32),
         array_type(le_u32),
@@ -1403,17 +1531,19 @@ impl GuideLinePerspectiveContent {
       )
         .parse(input)?;
 
-    Ok((
-      input,
-      Self {
-        x_coordinates,
-        y_coordinates,
-        line_counts,
-        colors,
-        visible,
-        is_shown_in_preview,
-      },
-    ))
+      Ok((
+        rest,
+        Self {
+          x_coordinates,
+          y_coordinates,
+          line_counts,
+          colors,
+          visible,
+          is_shown_in_preview,
+          remaining_data: remaining_data.into(),
+        },
+      ))
+    }
   }
 }
 
@@ -1432,17 +1562,20 @@ impl GuideLine {
 
     match header.guide_line_type {
       GuideLineType::Grid => {
-        let (input, content) = GuideLineGridContent::parse(input)?;
+        let (input, content) =
+          GuideLineGridContent::parser(header.data_size as usize).parse(input)?;
 
         Ok((input, Self::Grid(content)))
       }
       GuideLineType::Isometric => {
-        let (input, content) = GuideLineIsometricContent::parse(input)?;
+        let (input, content) =
+          GuideLineIsometricContent::parser(header.data_size as usize).parse(input)?;
 
         Ok((input, Self::Isometric(content)))
       }
       GuideLineType::Perspective => {
-        let (input, content) = GuideLinePerspectiveContent::parse(input)?;
+        let (input, content) =
+          GuideLinePerspectiveContent::parser(header.data_size as usize).parse(input)?;
 
         Ok((input, Self::Perspective(content)))
       }
@@ -1487,23 +1620,32 @@ pub struct PostProcessorCrtContent {
   /// Glow intensity (0-1).
   pub glow_intensity: f64,
   pub enabled: bool,
+  remaining_data: Vec<u8>,
 }
 
-impl PostProcessorCrtContent {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
-    let (input, (id, is_pixel_independent, scan_line_intensity, glow_intensity, enabled)) =
-      (string, bool, le_f64, le_f64, bool).parse(input)?;
+impl<'a> PostProcessorCrtContent {
+  fn parser(
+    data_size: usize,
+  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
+    move |input| {
+      let (rest, input) = take(data_size).parse(input)?;
+      let (
+        remaining_data,
+        (id, is_pixel_independent, scan_line_intensity, glow_intensity, enabled),
+      ) = (string, bool, le_f64, le_f64, bool).parse(input)?;
 
-    Ok((
-      input,
-      Self {
-        id: id.to_string(),
-        is_pixel_independent,
-        scan_line_intensity,
-        glow_intensity,
-        enabled,
-      },
-    ))
+      Ok((
+        rest,
+        Self {
+          id: id.to_string(),
+          is_pixel_independent,
+          scan_line_intensity,
+          glow_intensity,
+          enabled,
+          remaining_data: remaining_data.into(),
+        },
+      ))
+    }
   }
 }
 
@@ -1516,23 +1658,30 @@ pub struct PostProcessorVignetteContent {
   /// Intensity (0-1).
   pub intensity: f64,
   pub enabled: bool,
+  remaining_data: Vec<u8>,
 }
 
-impl PostProcessorVignetteContent {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
-    let (input, (id, is_pixel_independent, color, intensity, enabled)) =
-      (string, bool, argb_color, le_f64, bool).parse(input)?;
+impl<'a> PostProcessorVignetteContent {
+  fn parser(
+    data_size: usize,
+  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
+    move |input| {
+      let (rest, input) = take(data_size).parse(input)?;
+      let (remaining_data, (id, is_pixel_independent, color, intensity, enabled)) =
+        (string, bool, argb_color, le_f64, bool).parse(input)?;
 
-    Ok((
-      input,
-      Self {
-        id: id.to_string(),
-        is_pixel_independent,
-        color,
-        intensity,
-        enabled,
-      },
-    ))
+      Ok((
+        rest,
+        Self {
+          id: id.to_string(),
+          is_pixel_independent,
+          color,
+          intensity,
+          enabled,
+          remaining_data: remaining_data.into(),
+        },
+      ))
+    }
   }
 }
 
@@ -1548,24 +1697,31 @@ pub struct PostProcessorBloomContent {
   /// Radius (0-1).
   pub radius: f64,
   pub enabled: bool,
+  remaining_data: Vec<u8>,
 }
 
-impl PostProcessorBloomContent {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
-    let (input, (id, is_pixel_independent, threshold, intensity, radius, enabled)) =
-      (string, bool, le_f64, le_f64, le_f64, bool).parse(input)?;
+impl<'a> PostProcessorBloomContent {
+  fn parser(
+    data_size: usize,
+  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
+    move |input| {
+      let (rest, input) = take(data_size).parse(input)?;
+      let (remaining_data, (id, is_pixel_independent, threshold, intensity, radius, enabled)) =
+        (string, bool, le_f64, le_f64, le_f64, bool).parse(input)?;
 
-    Ok((
-      input,
-      Self {
-        id: id.to_string(),
-        is_pixel_independent,
-        threshold,
-        intensity,
-        radius,
-        enabled,
-      },
-    ))
+      Ok((
+        rest,
+        Self {
+          id: id.to_string(),
+          is_pixel_independent,
+          threshold,
+          intensity,
+          radius,
+          enabled,
+          remaining_data: remaining_data.into(),
+        },
+      ))
+    }
   }
 }
 
@@ -1578,23 +1734,30 @@ pub struct PostProcessorRoundPixelContent {
   /// Intensity (0-1).
   pub intensity: f64,
   pub enabled: bool,
+  remaining_data: Vec<u8>,
 }
 
-impl PostProcessorRoundPixelContent {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
-    let (input, (id, is_contiguous, background_color, intensity, enabled)) =
-      (string, bool, argb_color, le_f64, bool).parse(input)?;
+impl<'a> PostProcessorRoundPixelContent {
+  fn parser(
+    data_size: usize,
+  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
+    move |input| {
+      let (rest, input) = take(data_size).parse(input)?;
+      let (remaining_data, (id, is_contiguous, background_color, intensity, enabled)) =
+        (string, bool, argb_color, le_f64, bool).parse(input)?;
 
-    Ok((
-      input,
-      Self {
-        id: id.to_string(),
-        is_contiguous,
-        background_color,
-        intensity,
-        enabled,
-      },
-    ))
+      Ok((
+        rest,
+        Self {
+          id: id.to_string(),
+          is_contiguous,
+          background_color,
+          intensity,
+          enabled,
+          remaining_data: remaining_data.into(),
+        },
+      ))
+    }
   }
 }
 
@@ -1613,22 +1776,26 @@ impl PostProcessor {
 
     match header.processor_type {
       ProcessorType::Crt => {
-        let (input, content) = PostProcessorCrtContent::parse(input)?;
+        let (input, content) =
+          PostProcessorCrtContent::parser(header.data_size as usize).parse(input)?;
 
         Ok((input, Self::Crt(content)))
       }
       ProcessorType::Vignette => {
-        let (input, content) = PostProcessorVignetteContent::parse(input)?;
+        let (input, content) =
+          PostProcessorVignetteContent::parser(header.data_size as usize).parse(input)?;
 
         Ok((input, Self::Vignette(content)))
       }
       ProcessorType::Bloom => {
-        let (input, content) = PostProcessorBloomContent::parse(input)?;
+        let (input, content) =
+          PostProcessorBloomContent::parser(header.data_size as usize).parse(input)?;
 
         Ok((input, Self::Bloom(content)))
       }
       ProcessorType::RoundPixel => {
-        let (input, content) = PostProcessorRoundPixelContent::parse(input)?;
+        let (input, content) =
+          PostProcessorRoundPixelContent::parser(header.data_size as usize).parse(input)?;
 
         Ok((input, Self::RoundPixel(content)))
       }
@@ -1670,20 +1837,27 @@ pub struct ModifierAnimationSpeedMultiplierContent {
   /// The multiplier.
   /// 2 means twice as fast, 0.5 means 2 times slower.
   multiplier: f32,
+  remaining_data: Vec<u8>,
 }
 
-impl ModifierAnimationSpeedMultiplierContent {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
-    let (input, (id, enabled, multiplier)) = (string, bool, le_f32).parse(input)?;
+impl<'a> ModifierAnimationSpeedMultiplierContent {
+  fn parser(
+    data_size: usize,
+  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
+    move |input| {
+      let (rest, input) = take(data_size).parse(input)?;
+      let (remaining_data, (id, enabled, multiplier)) = (string, bool, le_f32).parse(input)?;
 
-    Ok((
-      input,
-      Self {
-        id: id.to_string(),
-        enabled,
-        multiplier,
-      },
-    ))
+      Ok((
+        rest,
+        Self {
+          id: id.to_string(),
+          enabled,
+          multiplier,
+          remaining_data: remaining_data.into(),
+        },
+      ))
+    }
   }
 }
 
@@ -1699,7 +1873,9 @@ impl Modifier {
 
     match header.modifier_type {
       ModifierType::AnimationSpeedMultiplier => {
-        let (input, content) = ModifierAnimationSpeedMultiplierContent::parse(input)?;
+        let (input, content) =
+          ModifierAnimationSpeedMultiplierContent::parser(header.data_size as usize)
+            .parse(input)?;
 
         Ok((input, Self::AnimationSpeedMultiplier(content)))
       }
@@ -1742,13 +1918,26 @@ pub struct PaletteOrganizationAnywhereContent {
   /// true - empty space
   /// false - color space
   pub arrangements: Vec<bool>,
+  remaining_data: Vec<u8>,
 }
 
-impl PaletteOrganizationAnywhereContent {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
-    let (input, (size, arrangements)) = (size, array_type(bool)).parse(input)?;
+impl<'a> PaletteOrganizationAnywhereContent {
+  fn parser(
+    data_size: usize,
+  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
+    move |input| {
+      let (rest, input) = take(data_size).parse(input)?;
+      let (remaining_data, (size, arrangements)) = (size, array_type(bool)).parse(input)?;
 
-    Ok((input, Self { size, arrangements }))
+      Ok((
+        rest,
+        Self {
+          size,
+          arrangements,
+          remaining_data: remaining_data.into(),
+        },
+      ))
+    }
   }
 }
 
@@ -1766,7 +1955,8 @@ impl PaletteOrganization {
     match header.organization_type {
       PaletteOrganizationType::Packed => Ok((input, Self::Packed)),
       PaletteOrganizationType::Anywhere => {
-        let (input, content) = PaletteOrganizationAnywhereContent::parse(input)?;
+        let (input, content) =
+          PaletteOrganizationAnywhereContent::parser(header.data_size as usize).parse(input)?;
 
         Ok((input, Self::Anywhere(content)))
       }
@@ -1856,6 +2046,7 @@ pub struct Artwork {
   pub tiled_corners: Corners,
   /// Default: []
   pub modifiers: Vec<Modifier>,
+  remaining_data: Vec<u8>,
 }
 
 impl<'a> Artwork {
@@ -1872,7 +2063,7 @@ impl<'a> Artwork {
     let (input, header) = ArtworkHeader::parse(input)?;
 
     let (
-      input,
+      remaining_data,
       (
         id,
         canvas_size,
@@ -1932,7 +2123,7 @@ impl<'a> Artwork {
       .parse(input)?;
 
     Ok((
-      input,
+      remaining_data,
       Self {
         id: id.to_string(),
         canvas_size,
@@ -1958,6 +2149,7 @@ impl<'a> Artwork {
         is_need_timelapse,
         tiled_corners,
         modifiers,
+        remaining_data: remaining_data.into(),
       },
     ))
   }
@@ -2038,7 +2230,8 @@ mod tests {
           a: 255
         },
         visible: false,
-        is_shown_in_preview: false
+        is_shown_in_preview: false,
+        remaining_data: vec![],
       })
     );
     assert!(artwork.post_processors.is_empty());
