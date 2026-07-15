@@ -2252,6 +2252,38 @@ mod tests {
   }
 
   #[test]
+  fn test_parse_entry_data() {
+    let path = "assets/fixtures/entry.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.entries.len(), 5);
+    assert!(
+      artwork
+        .layers
+        .iter()
+        .any(|l| l.id == artwork.entries[0].id && l.name == "Layer 1")
+    );
+    assert!(
+      artwork
+        .layers
+        .iter()
+        .any(|l| l.id == artwork.entries[1].id && l.name == "Layer 2")
+    );
+    assert!(
+      artwork
+        .groups
+        .iter()
+        .any(|g| g.id == artwork.entries[2].id && g.name == "Group 1")
+    );
+    assert_eq!(artwork.entries[3].id, artwork.reference_layers[0].id);
+    assert_eq!(artwork.entries[4].id, artwork.tilemap_layers[0].id);
+  }
+
+  #[test]
   fn test_parse_group_data() {
     let path = "assets/fixtures/group.px";
     let file_data = std::fs::read(path).unwrap();
@@ -2577,34 +2609,177 @@ mod tests {
   }
 
   #[test]
-  fn test_parse_entry_data() {
-    let path = "assets/fixtures/entry.px";
+  fn test_parse_frame_content_data() {
+    let path = "assets/fixtures/frame_content.px";
     let file_data = std::fs::read(path).unwrap();
     let file = Artwork::read(&file_data);
 
     assert!(file.is_ok());
 
     let artwork = file.unwrap();
-    assert_eq!(artwork.entries.len(), 5);
+    assert_eq!(artwork.layers[0].frames.len(), 4);
+    assert_eq!(artwork.layers[1].frames.len(), 4);
+    assert_eq!(artwork.layers[2].frames.len(), 4);
+    assert_ne!(
+      artwork.layers[0].frames[0].content_id,
+      artwork.layers[0].frames[1].content_id
+    );
+    assert_eq!(
+      artwork.layers[0].frames[0].content_id,
+      artwork.layers[0].frames[2].content_id
+    );
+    assert_ne!(
+      artwork.layers[0].frames[0].content_id,
+      artwork.layers[0].frames[3].content_id
+    );
+    assert_ne!(
+      artwork.layers[0].frames[1].content_id,
+      artwork.layers[0].frames[2].content_id
+    );
+    assert_ne!(
+      artwork.layers[0].frames[1].content_id,
+      artwork.layers[0].frames[3].content_id
+    );
+    assert_ne!(
+      artwork.layers[0].frames[2].content_id,
+      artwork.layers[0].frames[3].content_id
+    );
+    assert_ne!(
+      artwork.layers[1].frames[0].content_id,
+      artwork.layers[1].frames[1].content_id
+    );
+    assert_ne!(
+      artwork.layers[1].frames[0].content_id,
+      artwork.layers[1].frames[2].content_id
+    );
+    assert_ne!(
+      artwork.layers[1].frames[0].content_id,
+      artwork.layers[1].frames[3].content_id
+    );
+    assert_eq!(
+      artwork.layers[1].frames[1].content_id,
+      artwork.layers[1].frames[2].content_id
+    );
+    assert_ne!(
+      artwork.layers[1].frames[1].content_id,
+      artwork.layers[1].frames[3].content_id
+    );
+    assert_ne!(
+      artwork.layers[1].frames[2].content_id,
+      artwork.layers[1].frames[3].content_id
+    );
+    assert_ne!(
+      artwork.layers[2].frames[0].content_id,
+      artwork.layers[2].frames[1].content_id
+    );
+    assert_ne!(
+      artwork.layers[2].frames[0].content_id,
+      artwork.layers[2].frames[2].content_id
+    );
+    assert_ne!(
+      artwork.layers[2].frames[0].content_id,
+      artwork.layers[2].frames[3].content_id
+    );
+    assert_ne!(
+      artwork.layers[2].frames[1].content_id,
+      artwork.layers[2].frames[2].content_id
+    );
+    assert_ne!(
+      artwork.layers[2].frames[1].content_id,
+      artwork.layers[2].frames[3].content_id
+    );
+    assert_ne!(
+      artwork.layers[2].frames[2].content_id,
+      artwork.layers[2].frames[3].content_id
+    );
+    // collect unique content_ids
+    let mut uniq_ids: Vec<&str> = vec![];
+    for i in 0..artwork.layers.len() {
+      for j in 0..artwork.layers[i].frames.len() {
+        if uniq_ids
+          .iter()
+          .all(|id| id != &artwork.layers[i].frames[j].content_id)
+        {
+          uniq_ids.push(&artwork.layers[i].frames[j].content_id);
+        }
+      }
+    }
+    assert_eq!(uniq_ids.len(), artwork.frame_contents.len());
     assert!(
-      artwork
-        .layers
+      get_frame_content_by_indices(&artwork, 0, 0)
+        .colors
         .iter()
-        .any(|l| l.id == artwork.entries[0].id && l.name == "Layer 1")
+        .any(|color| color != &ArgbColor::default())
     );
     assert!(
-      artwork
-        .layers
+      get_frame_content_by_indices(&artwork, 0, 1)
+        .colors
         .iter()
-        .any(|l| l.id == artwork.entries[1].id && l.name == "Layer 2")
+        .all(|color| color == &ArgbColor::default())
     );
     assert!(
-      artwork
-        .groups
+      get_frame_content_by_indices(&artwork, 0, 3)
+        .colors
         .iter()
-        .any(|g| g.id == artwork.entries[2].id && g.name == "Group 1")
+        .all(|color| color == &ArgbColor::default())
     );
-    assert_eq!(artwork.entries[3].id, artwork.reference_layers[0].id);
-    assert_eq!(artwork.entries[4].id, artwork.tilemap_layers[0].id);
+    assert!(
+      get_frame_content_by_indices(&artwork, 1, 0)
+        .colors
+        .iter()
+        .all(|color| color == &ArgbColor::default())
+    );
+    assert!(
+      get_frame_content_by_indices(&artwork, 1, 0)
+        .colors
+        .iter()
+        .all(|color| color == &ArgbColor::default())
+    );
+    assert!(
+      get_frame_content_by_indices(&artwork, 1, 1)
+        .colors
+        .iter()
+        .any(|color| color != &ArgbColor::default())
+    );
+    assert!(
+      get_frame_content_by_indices(&artwork, 1, 3)
+        .colors
+        .iter()
+        .all(|color| color == &ArgbColor::default())
+    );
+    assert!(
+      get_frame_content_by_indices(&artwork, 2, 0)
+        .colors
+        .iter()
+        .all(|color| color == &ArgbColor::default())
+    );
+    assert!(
+      get_frame_content_by_indices(&artwork, 2, 1)
+        .colors
+        .iter()
+        .any(|color| color != &ArgbColor::default())
+    );
+    assert!(
+      get_frame_content_by_indices(&artwork, 2, 2)
+        .colors
+        .iter()
+        .all(|color| color == &ArgbColor::default())
+    );
+    assert!(
+      get_frame_content_by_indices(&artwork, 2, 3)
+        .colors
+        .iter()
+        .all(|color| color == &ArgbColor::default())
+    );
+  }
+
+  fn get_frame_content_by_indices(artwork: &Artwork, i: usize, j: usize) -> &FrameContent {
+    let frame_content_id = &artwork.layers[i].frames[j].content_id;
+
+    artwork
+      .frame_contents
+      .iter()
+      .find(|content| &content.id == frame_content_id)
+      .unwrap()
   }
 }
