@@ -2586,15 +2586,25 @@ mod tests {
 
     let artwork = file.unwrap();
     assert_eq!(artwork.entries.len(), 5);
-    assert_eq!(artwork.tilesets.len(), 1);
-    assert_eq!(artwork.tilesets[0].name, "Tileset 1");
-    assert_eq!(artwork.tilesets[0].tile_images.len(), 2);
     assert!(
-      artwork.tilesets[0]
-        .tile_images
+      artwork
+        .layers
         .iter()
-        .all(|image| image.len() == 16 * 16)
+        .any(|l| l.id == artwork.entries[0].id && l.name == "Layer 1")
     );
-    assert_eq!(artwork.tilemap_layers.len(), 1);
+    assert!(
+      artwork
+        .layers
+        .iter()
+        .any(|l| l.id == artwork.entries[1].id && l.name == "Layer 2")
+    );
+    assert!(
+      artwork
+        .groups
+        .iter()
+        .any(|g| g.id == artwork.entries[2].id && g.name == "Group 1")
+    );
+    assert_eq!(artwork.entries[3].id, artwork.reference_layers[0].id);
+    assert_eq!(artwork.entries[4].id, artwork.tilemap_layers[0].id);
   }
 }
