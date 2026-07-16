@@ -2155,6 +2155,8 @@ impl<'a> Artwork {
 
 #[cfg(test)]
 mod tests {
+  use crate::composite_type::Coordinate;
+
   use super::*;
 
   #[test]
@@ -2790,6 +2792,64 @@ mod tests {
       ArgbColor::post_multiply(20, 160, 46, 179)
     );
     assert_eq!(artwork.palette[3], ArgbColor::new(255, 0, 0, 255));
+  }
+
+  #[test]
+  fn test_parse_reference_layer_data() {
+    let path = "assets/fixtures/reference_layer.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.reference_layers.len(), 2);
+    // Reference Layer 1
+    assert_eq!(artwork.reference_layers[0].name, "Reference Layer 1");
+    assert!(artwork.reference_layers[0].png_data.len() > 0);
+    assert_eq!(
+      artwork.reference_layers[0].opacity,
+      f16::from_f32(0.7001953)
+    );
+    assert_eq!(artwork.reference_layers[0].visible, false);
+    assert_eq!(artwork.reference_layers[0].selected, false);
+    assert_eq!(
+      artwork.reference_layers[0].bounds,
+      Rect {
+        origin: Coordinate { x: 16, y: 0 },
+        size: Size {
+          width: 48,
+          height: 48,
+        },
+      }
+    );
+    assert_eq!(artwork.reference_layers[0].angle, 0.0);
+    assert_eq!(
+      artwork.reference_layers[0].color,
+      ArgbColor::new(255, 0, 0, 255)
+    );
+    assert_eq!(artwork.reference_layers[0].flip_axes.vertical, false);
+    assert_eq!(artwork.reference_layers[0].flip_axes.horizontal, false);
+    // Reference Layer 2
+    assert_eq!(artwork.reference_layers[1].name, "Reference Layer 2");
+    assert!(artwork.reference_layers[1].png_data.len() > 0);
+    assert_eq!(artwork.reference_layers[1].opacity, f16::from_f32(1.0));
+    assert_eq!(artwork.reference_layers[1].visible, true);
+    assert_eq!(artwork.reference_layers[1].selected, false);
+    assert_eq!(
+      artwork.reference_layers[1].bounds,
+      Rect {
+        origin: Coordinate { x: 0, y: 19 },
+        size: Size {
+          width: 45,
+          height: 45,
+        },
+      }
+    );
+    assert_eq!(artwork.reference_layers[1].angle, 0.8069841);
+    assert_eq!(artwork.reference_layers[1].color, ArgbColor::default());
+    assert_eq!(artwork.reference_layers[1].flip_axes.vertical, false);
+    assert_eq!(artwork.reference_layers[1].flip_axes.horizontal, true);
   }
 
   fn get_frame_content_by_indices(artwork: &Artwork, i: usize, j: usize) -> &FrameContent {
