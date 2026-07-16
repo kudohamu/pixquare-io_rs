@@ -40,6 +40,17 @@ impl ArgbColor {
   pub fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
     Self { r, g, b, a }
   }
+
+  pub fn post_multiply(r: u8, g: u8, b: u8, a: u8) -> Self {
+    let alpha_ratio = (a as f32) / (255 as f32);
+
+    Self {
+      r: ((r as f32) * alpha_ratio) as u8,
+      g: ((g as f32) * alpha_ratio) as u8,
+      b: ((b as f32) * alpha_ratio) as u8,
+      a,
+    }
+  }
 }
 
 impl TryFrom<&[u8]> for ArgbColor {

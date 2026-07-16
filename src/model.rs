@@ -2773,6 +2773,25 @@ mod tests {
     );
   }
 
+  #[test]
+  fn test_parse_palette_data() {
+    let path = "assets/fixtures/palette.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.palette.len(), 4);
+    assert_eq!(artwork.palette[0], ArgbColor::new(0, 0, 0, 255));
+    assert_eq!(artwork.palette[1], ArgbColor::new(255, 255, 255, 255));
+    assert_eq!(
+      artwork.palette[2],
+      ArgbColor::post_multiply(20, 160, 46, 179)
+    );
+    assert_eq!(artwork.palette[3], ArgbColor::new(255, 0, 0, 255));
+  }
+
   fn get_frame_content_by_indices(artwork: &Artwork, i: usize, j: usize) -> &FrameContent {
     let frame_content_id = &artwork.layers[i].frames[j].content_id;
 
