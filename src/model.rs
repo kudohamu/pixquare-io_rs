@@ -1925,7 +1925,9 @@ impl<'a> PaletteOrganizationAnywhereContent {
   ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
     move |input| {
       let (rest, input) = take(data_size).parse(input)?;
-      let (remaining_data, (size, arrangements)) = (size, array_type(bool)).parse(input)?;
+      let (input, size) = size.parse(input)?;
+      let (remaining_data, arrangements) =
+        type_n(bool, (size.width as usize) * (size.height as usize)).parse(input)?;
 
       Ok((
         rest,
@@ -2027,7 +2029,7 @@ pub struct Artwork {
   /// Some stats of this file.
   pub stats: Stats,
   /// Ignore this byte.
-  pub _unused: u8,
+  _unused: u8,
   /// Canvas grid config.
   /// Default: 16 x 16 Grid with blue color.
   pub canvas_grid: CanvasGrid,
@@ -2792,6 +2794,30 @@ mod tests {
       ArgbColor::post_multiply(20, 160, 46, 179)
     );
     assert_eq!(artwork.palette[3], ArgbColor::new(255, 0, 0, 255));
+    assert_eq!(artwork.palette_organization, PaletteOrganization::Packed);
+  }
+
+  #[test]
+  fn test_parse_palette_anywhere_data() {
+    let path = "assets/fixtures/palette-anywhere.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.palette.len(), 7);
+    let PaletteOrganization::Anywhere(content) = &artwork.palette_organization else {
+      panic!("expected PaletteOrganization::Anywhere");
+    };
+    assert_eq!(content.size, Size::new(9, 2));
+    assert_eq!(
+      content.arrangements,
+      vec![
+        false, true, true, false, true, false, false, false, true, false, true, true, true, false,
+        false, false, false, false,
+      ]
+    );
   }
 
   #[test]
