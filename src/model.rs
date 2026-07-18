@@ -3375,6 +3375,21 @@ mod tests {
     );
   }
 
+  #[test]
+  fn test_parse_modifier_speed_multiplier_data() {
+    let path = "assets/fixtures/modifier-speed_multiplier.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    // NOTE: In the latest app verion,
+    // the speed multiplier is applied instantly to each frame within the app
+    // and is not saved as data of modifier's field.
+    assert_eq!(artwork.modifiers.len(), 0);
+  }
+
   fn get_frame_content_by_indices(artwork: &Artwork, i: usize, j: usize) -> &FrameContent {
     let frame_content_id = &artwork.layers[i].frames[j].content_id;
 
