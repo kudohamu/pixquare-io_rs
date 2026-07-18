@@ -501,6 +501,86 @@ impl Tag {
   }
 }
 
+/// Header data of PaletteOrganization for Tileset.
+/// 32 bytes
+#[derive(Debug)]
+struct TilesetPaletteOrganizationHeader {
+  /// Size of this model.
+  data_size: u32,
+  /// This size is probably 8 bytes.
+  /// Referring to PaletteOrganization.
+  organization_type: PaletteOrganizationType,
+}
+
+impl TilesetPaletteOrganizationHeader {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (rest, input) = take(32usize).parse(input)?;
+
+    let (_input, (data_size, organization_type)) =
+      (le_u32, map_res(le_u8, |b| b.try_into())).parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        data_size,
+        organization_type,
+      },
+    ))
+  }
+}
+
+/// Content data of Anywhere for TilesetPaletteOrganization.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TilesetPaletteOrganizationAnywhereContent {
+  arrangements: Vec<bool>,
+  remaining_data: Vec<u8>,
+}
+
+impl<'a> TilesetPaletteOrganizationAnywhereContent {
+  fn parser(
+    data_size: usize,
+  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
+    move |input| {
+      let (rest, input) = take(data_size).parse(input)?;
+      let (remaining_data, arrangements) = array_type(bool).parse(input)?;
+
+      Ok((
+        rest,
+        Self {
+          arrangements,
+          remaining_data: remaining_data.into(),
+        },
+      ))
+    }
+  }
+}
+
+/// PaletteOrganization settings for Tileset.
+/// This model is not listed in the official binary-spec.
+/// (This is the data structure I analyzed from real binary data :))
+#[derive(Debug, Clone, PartialEq)]
+pub enum TilesetPaletteOrganization {
+  Packed,
+  Anywhere(TilesetPaletteOrganizationAnywhereContent),
+}
+
+impl TilesetPaletteOrganization {
+  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+    let (input, header) = TilesetPaletteOrganizationHeader::parse(input)?;
+
+    match header.organization_type {
+      PaletteOrganizationType::Packed => Ok((input, Self::Packed)),
+      PaletteOrganizationType::Anywhere => {
+        let (input, content) =
+          TilesetPaletteOrganizationAnywhereContent::parser(header.data_size as usize)
+            .parse(input)?;
+
+        Ok((input, Self::Anywhere(content)))
+      }
+    }
+  }
+}
+
 /// Header data of Tileset.
 /// 32 bytes
 /// https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-3
@@ -535,6 +615,8 @@ pub struct Tileset {
   pub tiles_per_row: u16,
   /// Default: Black
   pub grid_color: ArgbColor,
+  /// The palette organization for this tileset.
+  pub palette_organization: TilesetPaletteOrganization,
   remaining_data: Vec<u8>,
 }
 
@@ -543,13 +625,17 @@ impl Tileset {
     let (input, header) = TilesetHeader::parse(input)?;
     let (rest, input) = take(header.data_size as usize).parse(input)?;
 
-    let (remaining_data, (id, name, tile_size, tile_images, tiles_per_row, grid_color)) = (
+    let (
+      remaining_data,
+      (id, name, tile_size, tile_images, tiles_per_row, grid_color, palette_organization),
+    ) = (
       string,
       string,
       size,
       array_type(Tileset::compressed_colors),
       le_u16,
       argb_color,
+      TilesetPaletteOrganization::parse,
     )
       .parse(input)?;
 
@@ -562,6 +648,7 @@ impl Tileset {
         tile_images,
         tiles_per_row,
         grid_color,
+        palette_organization,
         remaining_data: remaining_data.into(),
       },
     ))
@@ -2273,6 +2360,7 @@ mod tests {
       }
     );
     assert!(artwork.modifiers.is_empty());
+    assert!(artwork.remaining_data.is_empty());
   }
 
   #[test]
@@ -2305,6 +2393,9 @@ mod tests {
     );
     assert_eq!(artwork.entries[3].id, artwork.reference_layers[0].id);
     assert_eq!(artwork.entries[4].id, artwork.tilemap_layers[0].id);
+
+    // check for unspecified data in binary-spec.
+    assert!(artwork.entries[0].remaining_data.is_empty());
   }
 
   #[test]
@@ -2353,6 +2444,9 @@ mod tests {
     assert!(artwork.groups[2].cropping_masks.is_empty());
     assert!(artwork.groups[2].clipping_masks.is_empty());
     assert_eq!(artwork.groups[2].color, ArgbColor::new(143, 42, 42, 225));
+
+    // check for unspecified data in binary-spec.
+    assert!(artwork.groups[0].remaining_data.is_empty());
   }
 
   #[test]
@@ -2463,6 +2557,9 @@ mod tests {
     assert!(artwork.layers[6].clipping_masks.is_empty());
     assert_eq!(artwork.layers[6].color, ArgbColor::default());
     assert!(artwork.layers[6].fxs.is_empty());
+
+    // check for unspecified data in binary-spec.
+    assert!(artwork.layers[0].remaining_data.is_empty());
   }
 
   #[test]
@@ -2488,6 +2585,8 @@ mod tests {
     assert_eq!(fx.pattern_size, Size::new(8, 8));
     assert_eq!(fx.opacity, 0.8);
     assert_eq!(fx.blend_mode, BlendMode::Overlay);
+    // check for unspecified data in binary-spec.
+    assert!(fx.remaining_data.is_empty());
 
     assert_eq!(artwork.layers[1].name, "Layer 2");
     assert_eq!(artwork.layers[1].fxs.len(), 1);
@@ -2500,6 +2599,8 @@ mod tests {
     assert_eq!(fx.enabled, true);
     assert_eq!(fx.color, ArgbColor::new(183, 166, 167, 212));
     assert_eq!(fx.blend_mode, BlendMode::Screen);
+    // check for unspecified data in binary-spec.
+    assert!(fx.remaining_data.is_empty());
 
     assert_eq!(artwork.layers[2].name, "Layer 3");
     assert_eq!(artwork.layers[2].fxs.len(), 2);
@@ -2525,6 +2626,8 @@ mod tests {
     assert_eq!(fx.ignored_colors[0], ArgbColor::new(121, 58, 128, 255));
     assert_eq!(fx.is_outside, true);
     assert_eq!(fx.is_water_color_on, true);
+    // check for unspecified data in binary-spec.
+    assert!(fx.remaining_data.is_empty());
 
     let Fx::AntiAliasing(fx) = &artwork.layers[2].fxs[1] else {
       panic!(
@@ -2598,6 +2701,8 @@ mod tests {
       }
     );
     assert_eq!(fx.intensity, 0.5);
+    // check for unspecified data in binary-spec.
+    assert!(fx.remaining_data.is_empty());
   }
 
   #[test]
@@ -2630,6 +2735,9 @@ mod tests {
     assert_eq!(frame1.id, artwork.layers[1].frames[0].id);
     assert_eq!(frame2.id, artwork.layers[1].frames[1].id);
     assert_eq!(frame3.id, artwork.layers[1].frames[2].id);
+
+    // check for unspecified data in binary-spec.
+    assert!(artwork.layers[0].frames[0].remaining_data.is_empty());
   }
 
   #[test]
@@ -2795,6 +2903,9 @@ mod tests {
         .iter()
         .all(|color| color == &ArgbColor::default())
     );
+
+    // check for unspecified data in binary-spec.
+    assert!(artwork.frame_contents[0].remaining_data.is_empty());
   }
 
   #[test]
@@ -2838,6 +2949,9 @@ mod tests {
         false, false, false, false,
       ]
     );
+
+    // check for unspecified data in binary-spec.
+    assert!(content.remaining_data.is_empty());
   }
 
   #[test]
@@ -2896,6 +3010,9 @@ mod tests {
     assert_eq!(artwork.reference_layers[1].color, ArgbColor::default());
     assert_eq!(artwork.reference_layers[1].flip_axes.vertical, false);
     assert_eq!(artwork.reference_layers[1].flip_axes.horizontal, true);
+
+    // check for unspecified data in binary-spec.
+    assert!(artwork.reference_layers[0].remaining_data.is_empty());
   }
 
   #[test]
@@ -2948,6 +3065,9 @@ mod tests {
       artwork.symmetry_lines[1].symmetry_type,
       SymmetryType::Rotate
     );
+
+    // check for unspecified data in binary-spec.
+    assert!(artwork.symmetry_lines[0].remaining_data.is_empty());
   }
 
   #[test]
@@ -2996,6 +3116,9 @@ mod tests {
     assert_eq!(artwork.tags[3].direction, AnimationDirection::PingPong);
     assert_eq!(artwork.tags[3].loop_count, 0);
     assert_eq!(artwork.tags[3].enabled, true);
+
+    // check for unspecified data in binary-spec.
+    assert!(artwork.tags[0].remaining_data.is_empty());
   }
 
   #[test]
@@ -3016,6 +3139,10 @@ mod tests {
     assert_eq!(artwork.tilesets[0].tile_images.len(), 3);
     assert_eq!(artwork.tilesets[0].tiles_per_row, 6);
     assert_eq!(artwork.tilesets[0].grid_color, ArgbColor::new(0, 0, 0, 255));
+    assert_eq!(
+      artwork.tilesets[0].palette_organization,
+      TilesetPaletteOrganization::Packed
+    );
     // Tileset 2
     assert_eq!(artwork.tilesets[1].name, "Tileset 2");
     assert_eq!(artwork.tilesets[1].tile_size, Size::new(16, 16));
@@ -3025,12 +3152,23 @@ mod tests {
       artwork.tilesets[1].grid_color,
       ArgbColor::new(255, 0, 0, 255)
     );
+    let TilesetPaletteOrganization::Anywhere(content) = &artwork.tilesets[1].palette_organization
+    else {
+      panic!("expected TilesetPaletteOrganization::Anywhere");
+    };
+    assert_eq!(content.arrangements, vec![false, true, false]);
+    // check for unspecified data in binary-spec.
+    assert!(content.remaining_data.is_empty());
     // Tileset 3
     assert_eq!(artwork.tilesets[2].name, "Tileset 3");
     assert_eq!(artwork.tilesets[2].tile_size, Size::new(16, 16));
     assert_eq!(artwork.tilesets[2].tile_images.len(), 0);
     assert_eq!(artwork.tilesets[2].tiles_per_row, 6);
     assert_eq!(artwork.tilesets[2].grid_color, ArgbColor::new(0, 0, 0, 255));
+    assert_eq!(
+      artwork.tilesets[2].palette_organization,
+      TilesetPaletteOrganization::Packed
+    );
     // TilemapFrameContent 1
     assert_eq!(
       artwork.tilemap_frame_contents[0].tile_size,
@@ -3197,6 +3335,11 @@ mod tests {
     assert_eq!(artwork.tilemap_layers[2].blend_mode, BlendMode::Normal);
     assert_eq!(artwork.tilemap_layers[2].linked, false);
     assert_eq!(artwork.tilemap_layers[2].color, ArgbColor::default());
+
+    // check for unspecified data in binary-spec.
+    assert!(artwork.tilesets[0].remaining_data.is_empty());
+    assert!(artwork.tilemap_frame_contents[0].remaining_data.is_empty());
+    assert!(artwork.tilemap_layers[0].remaining_data.is_empty());
   }
 
   #[test]
@@ -3247,6 +3390,9 @@ mod tests {
     assert_eq!(content.color, ArgbColor::new(0, 0, 255, 255));
     assert_eq!(content.visible, true);
     assert_eq!(content.is_shown_in_preview, false);
+
+    // check for unspecified data in binary-spec.
+    assert!(content.remaining_data.is_empty());
   }
 
   #[test]
@@ -3266,6 +3412,9 @@ mod tests {
     assert_eq!(content.visible, true);
     assert_eq!(content.is_shown_in_preview, true);
     assert_eq!(content.is_shown_vertical_line, false);
+
+    // check for unspecified data in binary-spec.
+    assert!(content.remaining_data.is_empty());
   }
 
   #[test]
@@ -3292,6 +3441,9 @@ mod tests {
     );
     assert_eq!(content.visible, true);
     assert_eq!(content.is_shown_in_preview, false);
+
+    // check for unspecified data in binary-spec.
+    assert!(content.remaining_data.is_empty());
   }
 
   #[test]
@@ -3311,6 +3463,9 @@ mod tests {
     assert_eq!(content.scan_line_intensity, 0.1);
     assert_eq!(content.glow_intensity, 0.17);
     assert_eq!(content.enabled, true);
+
+    // check for unspecified data in binary-spec.
+    assert!(content.remaining_data.is_empty());
   }
 
   #[test]
@@ -3338,6 +3493,9 @@ mod tests {
     assert_eq!(content.intensity, 0.3);
     assert_eq!(content.radius, 0.04);
     assert_eq!(content.enabled, true);
+
+    // check for unspecified data in binary-spec.
+    assert!(content.remaining_data.is_empty());
   }
 
   #[test]
@@ -3357,6 +3515,9 @@ mod tests {
     assert_eq!(content.background_color, ArgbColor::new(0, 0, 255, 255));
     assert_eq!(content.intensity, 0.45);
     assert_eq!(content.enabled, true);
+
+    // check for unspecified data in binary-spec.
+    assert!(content.remaining_data.is_empty());
   }
 
   #[test]
