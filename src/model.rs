@@ -198,6 +198,13 @@ pub struct TilemapFrameContent {
 }
 
 impl TilemapFrameContent {
+  /// Returns value of unassigned tile.
+  /// UInt16.max is for unassigned tiles.
+  /// https://docs.pixquare.art/pixquare-file/binary-specs?q=user+data#content-2
+  pub fn unassigned_tile() -> u16 {
+    u16::MAX
+  }
+
   fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (input, header) = TilemapFrameContentHeader::parse(input)?;
     let (rest, input) = take(header.data_size as usize).parse(input)?;
@@ -2977,6 +2984,207 @@ mod tests {
     assert_eq!(artwork.tags[3].color, ArgbColor::new(0, 0, 0, 255));
     assert_eq!(artwork.tags[3].direction, AnimationDirection::PingPong);
     assert_eq!(artwork.tags[3].loop_count, 0);
+  }
+
+  #[test]
+  fn test_parse_tilemap_data() {
+    let path = "assets/fixtures/tilemap.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.tilesets.len(), 3);
+    assert_eq!(artwork.tilemap_layers.len(), 3);
+    assert_eq!(artwork.tilemap_frame_contents.len(), 5);
+    // Tileset 1
+    assert_eq!(artwork.tilesets[0].name, "Tileset 1");
+    assert_eq!(artwork.tilesets[0].tile_size, Size::new(16, 16));
+    assert_eq!(artwork.tilesets[0].tile_images.len(), 3);
+    assert_eq!(artwork.tilesets[0].tiles_per_row, 6);
+    assert_eq!(artwork.tilesets[0].grid_color, ArgbColor::new(0, 0, 0, 255));
+    // Tileset 2
+    assert_eq!(artwork.tilesets[1].name, "Tileset 2");
+    assert_eq!(artwork.tilesets[1].tile_size, Size::new(16, 16));
+    assert_eq!(artwork.tilesets[1].tile_images.len(), 2);
+    assert_eq!(artwork.tilesets[1].tiles_per_row, 6);
+    assert_eq!(
+      artwork.tilesets[1].grid_color,
+      ArgbColor::new(255, 0, 0, 255)
+    );
+    // Tileset 3
+    assert_eq!(artwork.tilesets[2].name, "Tileset 3");
+    assert_eq!(artwork.tilesets[2].tile_size, Size::new(16, 16));
+    assert_eq!(artwork.tilesets[2].tile_images.len(), 0);
+    assert_eq!(artwork.tilesets[2].tiles_per_row, 6);
+    assert_eq!(artwork.tilesets[2].grid_color, ArgbColor::new(0, 0, 0, 255));
+    // TilemapFrameContent 1
+    assert_eq!(
+      artwork.tilemap_frame_contents[0].tile_size,
+      Size::new(16, 16)
+    );
+    assert_eq!(
+      artwork.tilemap_frame_contents[0].tiles,
+      vec![
+        TilemapFrameContent::unassigned_tile(),
+        2,
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        1,
+        TilemapFrameContent::unassigned_tile(),
+        0,
+        0,
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        1,
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+      ]
+    );
+    // TilemapFrameContent 2
+    assert_eq!(
+      artwork.tilemap_frame_contents[1].tile_size,
+      Size::new(16, 16)
+    );
+    assert_eq!(
+      artwork.tilemap_frame_contents[1].tiles,
+      vec![
+        1,
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        1,
+        0,
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        0,
+        1,
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+      ]
+    );
+    // TilemapFrameContent 3
+    assert_eq!(
+      artwork.tilemap_frame_contents[2].tile_size,
+      Size::new(16, 16)
+    );
+    assert_eq!(
+      artwork.tilemap_frame_contents[2].tiles,
+      vec![
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+      ]
+    );
+    // TilemapFrameContent 4
+    assert_eq!(
+      artwork.tilemap_frame_contents[3].tile_size,
+      Size::new(16, 16)
+    );
+    assert_eq!(
+      artwork.tilemap_frame_contents[3].tiles,
+      vec![
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+      ]
+    );
+    // TilemapFrameContent 5
+    assert_eq!(
+      artwork.tilemap_frame_contents[4].tile_size,
+      Size::new(16, 16)
+    );
+    assert_eq!(
+      artwork.tilemap_frame_contents[4].tiles,
+      vec![
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+        TilemapFrameContent::unassigned_tile(),
+      ]
+    );
+    // Tilemap Layer 1
+    assert_eq!(artwork.tilemap_layers[0].name, "Tilemap Layer 1");
+    assert_eq!(artwork.tilemap_layers[0].frames.len(), 2);
+    assert_eq!(artwork.tilemap_layers[0].opacity, f16::from_f32(1.));
+    assert_eq!(artwork.tilemap_layers[0].visible, true);
+    assert_eq!(artwork.tilemap_layers[0].locked, false);
+    assert_eq!(artwork.tilemap_layers[0].selected, true);
+    assert_eq!(artwork.tilemap_layers[0].alpha_locked, false);
+    assert_eq!(artwork.tilemap_layers[0].blend_mode, BlendMode::Normal);
+    assert_eq!(artwork.tilemap_layers[0].linked, false);
+    assert_eq!(
+      artwork.tilemap_layers[0].color,
+      ArgbColor::new(0, 255, 0, 255)
+    );
+    // Tilemap Layer 2
+    assert_eq!(artwork.tilemap_layers[1].name, "Tilemap Layer 2");
+    assert_eq!(artwork.tilemap_layers[1].frames.len(), 2);
+    assert_eq!(artwork.tilemap_layers[1].opacity, f16::from_f32(0.8100586));
+    assert_eq!(artwork.tilemap_layers[1].visible, true);
+    assert_eq!(artwork.tilemap_layers[1].locked, true);
+    assert_eq!(artwork.tilemap_layers[1].selected, false);
+    assert_eq!(artwork.tilemap_layers[1].alpha_locked, false);
+    assert_eq!(artwork.tilemap_layers[1].blend_mode, BlendMode::Normal);
+    assert_eq!(artwork.tilemap_layers[1].linked, true);
+    assert_eq!(artwork.tilemap_layers[1].color, ArgbColor::default());
+    // Tilemap Layer 3
+    assert_eq!(artwork.tilemap_layers[2].name, "Tilemap Layer 3");
+    assert_eq!(artwork.tilemap_layers[2].frames.len(), 2);
+    assert_eq!(artwork.tilemap_layers[2].opacity, f16::from_f32(1.));
+    assert_eq!(artwork.tilemap_layers[2].visible, false);
+    assert_eq!(artwork.tilemap_layers[2].locked, false);
+    assert_eq!(artwork.tilemap_layers[2].selected, false);
+    assert_eq!(artwork.tilemap_layers[2].alpha_locked, true);
+    assert_eq!(artwork.tilemap_layers[2].blend_mode, BlendMode::Normal);
+    assert_eq!(artwork.tilemap_layers[2].linked, false);
+    assert_eq!(artwork.tilemap_layers[2].color, ArgbColor::default());
   }
 
   fn get_frame_content_by_indices(artwork: &Artwork, i: usize, j: usize) -> &FrameContent {
