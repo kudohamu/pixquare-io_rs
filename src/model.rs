@@ -3351,6 +3351,30 @@ mod tests {
     assert_eq!(content.enabled, true);
   }
 
+  #[test]
+  fn test_parse_tiled_corners_data() {
+    let path = "assets/fixtures/tiled_corners.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(
+      artwork.tiled_corners,
+      Corners {
+        top_left: true,
+        top: false,
+        top_right: false,
+        left: true,
+        right: false,
+        bottom_left: false,
+        bottom: true,
+        bottom_right: true,
+      }
+    );
+  }
+
   fn get_frame_content_by_indices(artwork: &Artwork, i: usize, j: usize) -> &FrameContent {
     let frame_content_id = &artwork.layers[i].frames[j].content_id;
 
