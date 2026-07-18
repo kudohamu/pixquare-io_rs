@@ -3199,6 +3199,26 @@ mod tests {
     assert_eq!(artwork.color_depth, ColorDepth::Indexed);
   }
 
+  #[test]
+  fn test_parse_canvas_grid_data() {
+    let path = "assets/fixtures/canvas_grid.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.canvas_grid.size, Size::new(24, 24));
+    assert_eq!(
+      artwork.canvas_grid.first_color,
+      ArgbColor::new(255, 0, 0, 255)
+    );
+    assert_eq!(
+      artwork.canvas_grid.second_color,
+      ArgbColor::post_multiply(0, 0, 255, 191)
+    );
+  }
+
   fn get_frame_content_by_indices(artwork: &Artwork, i: usize, j: usize) -> &FrameContent {
     let frame_content_id = &artwork.layers[i].frames[j].content_id;
 
