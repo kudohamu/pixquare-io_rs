@@ -3360,6 +3360,18 @@ mod tests {
   }
 
   #[test]
+  fn test_parse_timelapse_data() {
+    let path = "assets/fixtures/timelapse.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.is_need_timelapse, true);
+  }
+
+  #[test]
   fn test_parse_tiled_corners_data() {
     let path = "assets/fixtures/tiled_corners.px";
     let file_data = std::fs::read(path).unwrap();
