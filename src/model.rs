@@ -2878,6 +2878,18 @@ mod tests {
     assert_eq!(artwork.reference_layers[1].flip_axes.horizontal, true);
   }
 
+  #[test]
+  fn test_parse_reference_image_data() {
+    let path = "assets/fixtures/reference_image.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.reference_images.len(), 2);
+  }
+
   fn get_frame_content_by_indices(artwork: &Artwork, i: usize, j: usize) -> &FrameContent {
     let frame_content_id = &artwork.layers[i].frames[j].content_id;
 
