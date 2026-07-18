@@ -3187,6 +3187,18 @@ mod tests {
     assert_eq!(artwork.tilemap_layers[2].color, ArgbColor::default());
   }
 
+  #[test]
+  fn test_parse_color_depth_indexed_data() {
+    let path = "assets/fixtures/color_depth-indexed.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.color_depth, ColorDepth::Indexed);
+  }
+
   fn get_frame_content_by_indices(artwork: &Artwork, i: usize, j: usize) -> &FrameContent {
     let frame_content_id = &artwork.layers[i].frames[j].content_id;
 
