@@ -3286,6 +3286,71 @@ mod tests {
     assert_eq!(content.is_shown_in_preview, false);
   }
 
+  #[test]
+  fn test_parse_post_processor_crt_data() {
+    let path = "assets/fixtures/post_processor-crt.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.post_processors.len(), 1);
+    let PostProcessor::Crt(content) = &artwork.post_processors[0] else {
+      panic!("expected PostProcessor::Crt");
+    };
+    assert_eq!(content.is_pixel_independent, true);
+    assert_eq!(content.scan_line_intensity, 0.1);
+    assert_eq!(content.glow_intensity, 0.17);
+    assert_eq!(content.enabled, true);
+  }
+
+  #[test]
+  fn test_parse_post_processor_vignette_and_bloom_data() {
+    let path = "assets/fixtures/post_processor-vignette-bloom.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.post_processors.len(), 2);
+    let PostProcessor::Vignette(content) = &artwork.post_processors[0] else {
+      panic!("expected PostProcessor::Vignette");
+    };
+    assert_eq!(content.is_pixel_independent, false);
+    assert_eq!(content.color, ArgbColor::new(0, 255, 0, 255));
+    assert_eq!(content.intensity, 0.8);
+    assert_eq!(content.enabled, true);
+    let PostProcessor::Bloom(content) = &artwork.post_processors[1] else {
+      panic!("expected PostProcessor::Bloom");
+    };
+    assert_eq!(content.is_pixel_independent, true);
+    assert_eq!(content.threshold, 0.4549019607843137);
+    assert_eq!(content.intensity, 0.3);
+    assert_eq!(content.radius, 0.04);
+    assert_eq!(content.enabled, true);
+  }
+
+  #[test]
+  fn test_parse_post_processor_round_pixel_data() {
+    let path = "assets/fixtures/post_processor-round_pixel.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.post_processors.len(), 1);
+    let PostProcessor::RoundPixel(content) = &artwork.post_processors[0] else {
+      panic!("expected PostProcessor::RoundPixel");
+    };
+    assert_eq!(content.is_contiguous, true);
+    assert_eq!(content.background_color, ArgbColor::new(0, 0, 255, 255));
+    assert_eq!(content.intensity, 0.45);
+    assert_eq!(content.enabled, true);
+  }
+
   fn get_frame_content_by_indices(artwork: &Artwork, i: usize, j: usize) -> &FrameContent {
     let frame_content_id = &artwork.layers[i].frames[j].content_id;
 
