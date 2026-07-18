@@ -452,6 +452,8 @@ pub struct Tag {
   pub color: ArgbColor,
   pub direction: AnimationDirection,
   pub loop_count: u16,
+  /// This property is not listed in the official binary-spec.
+  pub enabled: bool,
   remaining_data: Vec<u8>,
 }
 
@@ -467,7 +469,7 @@ impl Tag {
 
     let (
       remaining_data,
-      (id, name, start_index, end_index, selected, color, direction, loop_count),
+      (id, name, start_index, end_index, selected, color, direction, loop_count, enabled),
     ) = (
       dumb_string(header.id_len as usize),
       dumb_string(header.name_len as usize),
@@ -477,6 +479,7 @@ impl Tag {
       argb_color,
       map_res(le_u8, |b| b.try_into()),
       le_u16,
+      bool,
     )
       .parse(input)?;
 
@@ -491,6 +494,7 @@ impl Tag {
         color,
         direction,
         loop_count,
+        enabled,
         remaining_data: remaining_data.into(),
       },
     ))
@@ -2964,6 +2968,7 @@ mod tests {
     assert_eq!(artwork.tags[0].color, ArgbColor::new(0, 0, 0, 255));
     assert_eq!(artwork.tags[0].direction, AnimationDirection::Forward);
     assert_eq!(artwork.tags[0].loop_count, 0);
+    assert_eq!(artwork.tags[0].enabled, true);
     // Tag2
     assert_eq!(artwork.tags[1].name, "Tag2");
     assert_eq!(artwork.tags[1].start_index, 2);
@@ -2972,6 +2977,7 @@ mod tests {
     assert_eq!(artwork.tags[1].color, ArgbColor::new(255, 0, 0, 255));
     assert_eq!(artwork.tags[1].direction, AnimationDirection::Backward);
     assert_eq!(artwork.tags[1].loop_count, 1);
+    assert_eq!(artwork.tags[1].enabled, true);
     // Tag3
     assert_eq!(artwork.tags[2].name, "Tag3");
     assert_eq!(artwork.tags[2].start_index, 4);
@@ -2980,6 +2986,7 @@ mod tests {
     assert_eq!(artwork.tags[2].color, ArgbColor::new(0, 0, 0, 255));
     assert_eq!(artwork.tags[2].direction, AnimationDirection::PingPong);
     assert_eq!(artwork.tags[2].loop_count, 3);
+    assert_eq!(artwork.tags[2].enabled, false);
     // Tag4
     assert_eq!(artwork.tags[3].name, "Tag4");
     assert_eq!(artwork.tags[3].start_index, 6);
@@ -2988,6 +2995,7 @@ mod tests {
     assert_eq!(artwork.tags[3].color, ArgbColor::new(0, 0, 0, 255));
     assert_eq!(artwork.tags[3].direction, AnimationDirection::PingPong);
     assert_eq!(artwork.tags[3].loop_count, 0);
+    assert_eq!(artwork.tags[3].enabled, true);
   }
 
   #[test]
