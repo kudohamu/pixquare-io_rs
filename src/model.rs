@@ -449,6 +449,11 @@ pub struct Tag {
 }
 
 impl Tag {
+  /// Returns whether the loop setting for this tag is infinite loop.
+  pub fn is_infinite_loop(&self) -> bool {
+    self.loop_count == 0
+  }
+
   fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
     let (input, header) = TagHeader::parse(input)?;
     let (rest, input) = take(header.data_size as usize).parse(input)?;
@@ -2899,7 +2904,6 @@ mod tests {
     assert!(file.is_ok());
 
     let artwork = file.unwrap();
-    println!("{:?}", artwork.symmetry_lines);
     assert_eq!(artwork.symmetry_lines.len(), 2);
     assert_eq!(
       artwork.symmetry_lines[0].color,
@@ -2929,6 +2933,50 @@ mod tests {
       artwork.symmetry_lines[1].symmetry_type,
       SymmetryType::Rotate
     );
+  }
+
+  #[test]
+  fn test_parse_tag_data() {
+    let path = "assets/fixtures/tag.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.tags.len(), 4);
+    // Tag1
+    assert_eq!(artwork.tags[0].name, "Tag1");
+    assert_eq!(artwork.tags[0].start_index, 0);
+    assert_eq!(artwork.tags[0].end_index, 2);
+    assert_eq!(artwork.tags[0].selected, false);
+    assert_eq!(artwork.tags[0].color, ArgbColor::new(0, 0, 0, 255));
+    assert_eq!(artwork.tags[0].direction, AnimationDirection::Forward);
+    assert_eq!(artwork.tags[0].loop_count, 0);
+    // Tag2
+    assert_eq!(artwork.tags[1].name, "Tag2");
+    assert_eq!(artwork.tags[1].start_index, 2);
+    assert_eq!(artwork.tags[1].end_index, 3);
+    assert_eq!(artwork.tags[1].selected, true);
+    assert_eq!(artwork.tags[1].color, ArgbColor::new(255, 0, 0, 255));
+    assert_eq!(artwork.tags[1].direction, AnimationDirection::Backward);
+    assert_eq!(artwork.tags[1].loop_count, 1);
+    // Tag3
+    assert_eq!(artwork.tags[2].name, "Tag3");
+    assert_eq!(artwork.tags[2].start_index, 4);
+    assert_eq!(artwork.tags[2].end_index, 5);
+    assert_eq!(artwork.tags[2].selected, false);
+    assert_eq!(artwork.tags[2].color, ArgbColor::new(0, 0, 0, 255));
+    assert_eq!(artwork.tags[2].direction, AnimationDirection::PingPong);
+    assert_eq!(artwork.tags[2].loop_count, 3);
+    // Tag4
+    assert_eq!(artwork.tags[3].name, "Tag4");
+    assert_eq!(artwork.tags[3].start_index, 6);
+    assert_eq!(artwork.tags[3].end_index, 7);
+    assert_eq!(artwork.tags[3].selected, false);
+    assert_eq!(artwork.tags[3].color, ArgbColor::new(0, 0, 0, 255));
+    assert_eq!(artwork.tags[3].direction, AnimationDirection::PingPong);
+    assert_eq!(artwork.tags[3].loop_count, 0);
   }
 
   fn get_frame_content_by_indices(artwork: &Artwork, i: usize, j: usize) -> &FrameContent {
