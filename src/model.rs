@@ -2890,6 +2890,47 @@ mod tests {
     assert_eq!(artwork.reference_images.len(), 2);
   }
 
+  #[test]
+  fn test_parse_symmetry_line_data() {
+    let path = "assets/fixtures/symmetry_line.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    println!("{:?}", artwork.symmetry_lines);
+    assert_eq!(artwork.symmetry_lines.len(), 2);
+    assert_eq!(
+      artwork.symmetry_lines[0].color,
+      ArgbColor::new(0, 255, 58, 255)
+    );
+    assert_eq!(artwork.symmetry_lines[0].selected, false);
+    assert_eq!(artwork.symmetry_lines[0].enabled, true);
+    assert_eq!(artwork.symmetry_lines[0].origin_x, 16.);
+    assert_eq!(artwork.symmetry_lines[0].origin_y, 32.5);
+    assert_eq!(artwork.symmetry_lines[0].angle, 2.3561945);
+    assert_eq!(artwork.symmetry_lines[0].segment_count, 2);
+    assert_eq!(
+      artwork.symmetry_lines[0].symmetry_type,
+      SymmetryType::Mirror
+    );
+    assert_eq!(
+      artwork.symmetry_lines[1].color,
+      ArgbColor::new(0, 8, 255, 255)
+    );
+    assert_eq!(artwork.symmetry_lines[1].selected, false);
+    assert_eq!(artwork.symmetry_lines[1].enabled, true);
+    assert_eq!(artwork.symmetry_lines[1].origin_x, 48.0);
+    assert_eq!(artwork.symmetry_lines[1].origin_y, 23.5);
+    assert_eq!(artwork.symmetry_lines[1].angle, 1.6164448);
+    assert_eq!(artwork.symmetry_lines[1].segment_count, 3);
+    assert_eq!(
+      artwork.symmetry_lines[1].symmetry_type,
+      SymmetryType::Rotate
+    );
+  }
+
   fn get_frame_content_by_indices(artwork: &Artwork, i: usize, j: usize) -> &FrameContent {
     let frame_content_id = &artwork.layers[i].frames[j].content_id;
 
