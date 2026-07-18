@@ -1477,8 +1477,11 @@ pub struct GuideLineIsometricContent {
   pub size: Size,
   pub color: ArgbColor,
   pub visible: bool,
-  /// Show in preview.
+  /// Whether to show in preview.
   pub is_shown_in_preview: bool,
+  /// Whether to display the vertical line.
+  /// This property is not listed in the official binary-spec.
+  pub is_shown_vertical_line: bool,
   remaining_data: Vec<u8>,
 }
 
@@ -1488,8 +1491,8 @@ impl<'a> GuideLineIsometricContent {
   ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
     move |input| {
       let (rest, input) = take(data_size).parse(input)?;
-      let (remaining_data, (size, color, visible, is_shown_in_preview)) =
-        (size, argb_color, bool, bool).parse(input)?;
+      let (remaining_data, (size, color, visible, is_shown_in_preview, is_shown_vertical_line)) =
+        (size, argb_color, bool, bool, bool).parse(input)?;
 
       Ok((
         rest,
@@ -1498,6 +1501,7 @@ impl<'a> GuideLineIsometricContent {
           color,
           visible,
           is_shown_in_preview,
+          is_shown_vertical_line,
           remaining_data: remaining_data.into(),
         },
       ))
@@ -3217,6 +3221,69 @@ mod tests {
       artwork.canvas_grid.second_color,
       ArgbColor::post_multiply(0, 0, 255, 191)
     );
+  }
+
+  #[test]
+  fn test_parse_guideline_grid_data() {
+    let path = "assets/fixtures/guideline-grid.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    let GuideLine::Grid(content) = &artwork.guide_line else {
+      panic!("expected GuideLine::Grid");
+    };
+    assert_eq!(content.size, Size::new(20, 20));
+    assert_eq!(content.color, ArgbColor::new(0, 0, 255, 255));
+    assert_eq!(content.visible, true);
+    assert_eq!(content.is_shown_in_preview, false);
+  }
+
+  #[test]
+  fn test_parse_guideline_isometric_data() {
+    let path = "assets/fixtures/guideline-isometric.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    let GuideLine::Isometric(content) = &artwork.guide_line else {
+      panic!("expected GuideLine::Isometric");
+    };
+    assert_eq!(content.size, Size::new(18, 18));
+    assert_eq!(content.color, ArgbColor::new(0, 0, 255, 255));
+    assert_eq!(content.visible, true);
+    assert_eq!(content.is_shown_in_preview, true);
+    assert_eq!(content.is_shown_vertical_line, false);
+  }
+
+  #[test]
+  fn test_parse_guideline_perspective_data() {
+    let path = "assets/fixtures/guideline-perspective.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    let GuideLine::Perspective(content) = &artwork.guide_line else {
+      panic!("expected GuideLine::Perspective");
+    };
+    assert_eq!(content.x_coordinates, vec![16.05, 41.3]);
+    assert_eq!(content.y_coordinates, vec![16.999998, 45.8]);
+    assert_eq!(content.line_counts, vec![8, 5]);
+    assert_eq!(
+      content.colors,
+      vec![
+        ArgbColor::new(0, 0, 255, 255),
+        ArgbColor::new(255, 0, 0, 255)
+      ]
+    );
+    assert_eq!(content.visible, true);
+    assert_eq!(content.is_shown_in_preview, false);
   }
 
   fn get_frame_content_by_indices(artwork: &Artwork, i: usize, j: usize) -> &FrameContent {
