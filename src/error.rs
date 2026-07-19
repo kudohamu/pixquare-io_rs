@@ -1,5 +1,6 @@
 use std::{
   fmt::{Debug, Display},
+  io,
   str::Utf8Error,
 };
 
@@ -97,4 +98,34 @@ impl<'a> From<ParseError<&'a str>> for nom::Err<ParseError<&'a str>> {
   }
 }
 
-pub type PQResult<I, T> = nom::IResult<I, T, ParseError<I>>;
+pub type PPResult<I, T> = nom::IResult<I, T, ParseError<I>>;
+
+impl Display for MarshalError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::IoError(e) => write!(f, "I/O error: {e}"),
+    }
+  }
+}
+
+/// Represent error converting .px file to binary.
+#[derive(Debug)]
+pub enum MarshalError {
+  IoError(io::Error),
+}
+
+impl From<io::Error> for MarshalError {
+  fn from(e: io::Error) -> Self {
+    Self::IoError(e)
+  }
+}
+
+impl std::error::Error for MarshalError {
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    match self {
+      Self::IoError(e) => Some(e),
+    }
+  }
+}
+
+pub type PMResult<I = ()> = Result<I, MarshalError>;

@@ -21,7 +21,7 @@ use crate::{
     FlipAxes, FxType, GuideLineType, ModifierType, PaletteOrganizationType, ProcessorType, Rect,
     Size, SymmetryType,
   },
-  error::{PQResult, ParseError},
+  error::{MarshalError, PPResult, ParseError},
   primitive_type::OptionSet,
 };
 
@@ -36,7 +36,7 @@ struct CustomDataHeader {
 }
 
 impl CustomDataHeader {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(16usize).parse(input)?;
 
     let (_input, (data_size, data_type)) =
@@ -86,7 +86,7 @@ pub enum CustomData {
 }
 
 impl CustomData {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = CustomDataHeader::parse(input)?;
 
     match header.data_type {
@@ -118,7 +118,7 @@ struct FrameContentHeader {
 }
 
 impl FrameContentHeader {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(32usize).parse(input)?;
 
     let (_input, (data_size, id_len, color_len, compressed_color_len, _compat)) =
@@ -147,7 +147,7 @@ pub struct FrameContent {
 }
 
 impl FrameContent {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = FrameContentHeader::parse(input)?;
     let (rest, input) = take(header.data_size as usize).parse(input)?;
 
@@ -176,7 +176,7 @@ struct TilemapFrameContentHeader {
 }
 
 impl TilemapFrameContentHeader {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(32usize).parse(input)?;
 
     let (_input, data_size) = le_u64.parse(input)?;
@@ -205,7 +205,7 @@ impl TilemapFrameContent {
     u16::MAX
   }
 
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = TilemapFrameContentHeader::parse(input)?;
     let (rest, input) = take(header.data_size as usize).parse(input)?;
 
@@ -239,7 +239,7 @@ struct FrameHeader {
 }
 
 impl FrameHeader {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(32usize).parse(input)?;
 
     let (_input, (data_size, id_len, content_len)) = (le_u32, le_u8, le_u8).parse(input)?;
@@ -283,7 +283,7 @@ pub struct Frame {
 }
 
 impl Frame {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = FrameHeader::parse(input)?;
     let (rest, input) = take(header.data_size as usize).parse(input)?;
 
@@ -328,7 +328,7 @@ struct SymmetryLineHeader {
 }
 
 impl SymmetryLineHeader {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(16usize).parse(input)?;
 
     let (_input, (data_size, id_len, _compat)) = (le_u32, le_u8, option_set_u8).parse(input)?;
@@ -366,7 +366,7 @@ pub struct SymmetryLine {
 }
 
 impl SymmetryLine {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = SymmetryLineHeader::parse(input)?;
     let (rest, input) = take(header.data_size as usize).parse(input)?;
 
@@ -418,7 +418,7 @@ struct TagHeader {
 }
 
 impl TagHeader {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(16usize).parse(input)?;
 
     let (_input, (data_size, id_len, name_len)) = (le_u32, le_u8, le_u8).parse(input)?;
@@ -463,7 +463,7 @@ impl Tag {
     self.loop_count == 0
   }
 
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = TagHeader::parse(input)?;
     let (rest, input) = take(header.data_size as usize).parse(input)?;
 
@@ -513,7 +513,7 @@ struct TilesetPaletteOrganizationHeader {
 }
 
 impl TilesetPaletteOrganizationHeader {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(32usize).parse(input)?;
 
     let (_input, (data_size, organization_type)) =
@@ -565,7 +565,7 @@ pub enum TilesetPaletteOrganization {
 }
 
 impl TilesetPaletteOrganization {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = TilesetPaletteOrganizationHeader::parse(input)?;
 
     match header.organization_type {
@@ -591,7 +591,7 @@ struct TilesetHeader {
 }
 
 impl TilesetHeader {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(32usize).parse(input)?;
 
     let (_input, data_size) = le_u32.parse(input)?;
@@ -621,7 +621,7 @@ pub struct Tileset {
 }
 
 impl Tileset {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = TilesetHeader::parse(input)?;
     let (rest, input) = take(header.data_size as usize).parse(input)?;
 
@@ -658,7 +658,7 @@ impl Tileset {
   /// The Tileset documentation labels this as `[ARGBColor]`,
   /// but each compressed tile contains the raw, consecutive ARGBColor values.
   /// Unlike other `[Type]` values in the format, there is no leading UInt64 count.
-  fn compressed_colors(input: &[u8]) -> PQResult<&[u8], Vec<ArgbColor>> {
+  fn compressed_colors(input: &[u8]) -> PPResult<&[u8], Vec<ArgbColor>> {
     let (input, compressed_len) = le_u64.parse(input)?;
     let (input, compressed_data) = take(compressed_len as usize)(input)?;
 
@@ -696,7 +696,7 @@ struct FxHeader {
 }
 
 impl FxHeader {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(16usize).parse(input)?;
 
     let (_input, (data_size, fx_type)) = (le_u64, le_u8.map_res(|b| b.try_into())).parse(input)?;
@@ -870,7 +870,7 @@ pub enum Fx {
 }
 
 impl Fx {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = FxHeader::parse(input)?;
 
     match header.fx_type {
@@ -912,7 +912,7 @@ struct EntryHeader {
 }
 
 impl EntryHeader {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(16usize).parse(input)?;
 
     let (_input, (data_size, entry_type)) =
@@ -941,7 +941,7 @@ pub struct Entry {
 }
 
 impl Entry {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = EntryHeader::parse(input)?;
     let (rest, input) = take(header.data_size).parse(input)?;
 
@@ -970,7 +970,7 @@ struct LayerHeader {
 }
 
 impl LayerHeader {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(32usize).parse(input)?;
 
     let (_input, (data_size, id_len, name_len, _compat)) =
@@ -1026,7 +1026,7 @@ pub struct Layer {
 }
 
 impl Layer {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = LayerHeader::parse(input)?;
     let (rest, input) = take(header.data_size as usize).parse(input)?;
 
@@ -1104,7 +1104,7 @@ struct GroupHeader {
 }
 
 impl GroupHeader {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(32usize).parse(input)?;
 
     let (_input, (data_size, id_len, name_len, _compat)) =
@@ -1155,7 +1155,7 @@ pub struct Group {
 }
 
 impl Group {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = GroupHeader::parse(input)?;
     let (rest, input) = take(header.data_size).parse(input)?;
 
@@ -1228,7 +1228,7 @@ struct ReferenceLayerHeader {
 }
 
 impl ReferenceLayerHeader {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(32usize).parse(input)?;
 
     let (_input, (data_size, png_data_len, id_len, name_len)) =
@@ -1277,7 +1277,7 @@ pub struct ReferenceLayer {
 }
 
 impl ReferenceLayer {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = ReferenceLayerHeader::parse(input)?;
     let (rest, input) = take(header.data_size).parse(input)?;
 
@@ -1311,8 +1311,8 @@ impl ReferenceLayer {
         angle,
         color,
         flip_axes: FlipAxes {
-          horizontal: flip_axes_bin.flag(0),
-          vertical: flip_axes_bin.flag(1),
+          horizontal: flip_axes_bin.n_flag(0),
+          vertical: flip_axes_bin.n_flag(1),
         },
         remaining_data: remaining_data.into(),
       },
@@ -1330,7 +1330,7 @@ struct TilemapLayerHeader {
 }
 
 impl TilemapLayerHeader {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(32usize).parse(input)?;
 
     let (_input, data_size) = le_u32.parse(input)?;
@@ -1364,7 +1364,7 @@ pub struct TilemapLayer {
 }
 
 impl TilemapLayer {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = TilemapLayerHeader::parse(input)?;
     let (rest, input) = take(header.data_size as usize).parse(input)?;
 
@@ -1430,7 +1430,7 @@ struct StatsHeader {
 }
 
 impl StatsHeader {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(16usize).parse(input)?;
 
     let (_input, data_size) = le_u16.parse(input)?;
@@ -1456,7 +1456,7 @@ pub struct Stats {
 }
 
 impl Stats {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = StatsHeader::parse(input)?;
     let (rest, input) = take(header.data_size as usize).parse(input)?;
 
@@ -1486,7 +1486,7 @@ pub struct CanvasGrid {
 }
 
 impl CanvasGrid {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, (size, first_color, second_color)) = (size, argb_color, argb_color).parse(input)?;
 
     Ok((
@@ -1511,7 +1511,7 @@ struct GuideLineHeader {
 }
 
 impl GuideLineHeader {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(14usize).parse(input)?;
 
     let (_input, (_compat, data_size, guide_line_type)) =
@@ -1662,7 +1662,7 @@ pub enum GuideLine {
 }
 
 impl GuideLine {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = GuideLineHeader::parse(input)?;
 
     match header.guide_line_type {
@@ -1699,7 +1699,7 @@ struct PostProcessorHeader {
 }
 
 impl PostProcessorHeader {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(16usize).parse(input)?;
 
     let (_input, (data_size, processor_type)) =
@@ -1876,7 +1876,7 @@ pub enum PostProcessor {
 }
 
 impl PostProcessor {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = PostProcessorHeader::parse(input)?;
 
     match header.processor_type {
@@ -1918,7 +1918,7 @@ struct ModifierHeader {
 }
 
 impl ModifierHeader {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(16usize).parse(input)?;
 
     let (_input, (data_size, modifier_type)) =
@@ -1973,7 +1973,7 @@ pub enum Modifier {
 }
 
 impl Modifier {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = ModifierHeader::parse(input)?;
 
     match header.modifier_type {
@@ -1999,7 +1999,7 @@ struct PaletteOrganizationHeader {
 }
 
 impl PaletteOrganizationHeader {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(16usize).parse(input)?;
 
     let (_input, (data_size, organization_type)) =
@@ -2056,7 +2056,7 @@ pub enum PaletteOrganization {
 }
 
 impl PaletteOrganization {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = PaletteOrganizationHeader::parse(input)?;
 
     match header.organization_type {
@@ -2084,7 +2084,7 @@ struct ArtworkHeader {
 }
 
 impl ArtworkHeader {
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(64usize).parse(input)?;
     let (input, file_size) = le_u64(input)?;
     let (input, id_len) = le_u8(input)?;
@@ -2166,7 +2166,12 @@ impl<'a> Artwork {
     Ok(artwork)
   }
 
-  fn parse(input: &[u8]) -> PQResult<&[u8], Self> {
+  /// Writes the file in Aseprite binary format to any writer.
+  pub fn write<W: std::io::Write>(&self, w: W) -> Result<(), MarshalError> {
+    Ok(())
+  }
+
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = ArtworkHeader::parse(input)?;
 
     let (
@@ -2259,6 +2264,12 @@ impl<'a> Artwork {
         remaining_data: remaining_data.into(),
       },
     ))
+  }
+
+  fn to_binary(&self) -> Vec<u8> {
+    let mut buf = Vec::new();
+
+    buf
   }
 }
 

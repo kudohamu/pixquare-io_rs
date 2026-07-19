@@ -95,14 +95,14 @@ pub struct Corners {
 impl From<OptionSet<u8>> for Corners {
   fn from(os: OptionSet<u8>) -> Self {
     Self {
-      top_left: os.flag(0),
-      top: os.flag(1),
-      top_right: os.flag(2),
-      right: os.flag(3),
-      bottom_right: os.flag(4),
-      bottom: os.flag(5),
-      bottom_left: os.flag(6),
-      left: os.flag(7),
+      top_left: os.n_flag(0),
+      top: os.n_flag(1),
+      top_right: os.n_flag(2),
+      right: os.n_flag(3),
+      bottom_right: os.n_flag(4),
+      bottom: os.n_flag(5),
+      bottom_left: os.n_flag(6),
+      left: os.n_flag(7),
     }
   }
 }
