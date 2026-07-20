@@ -8,7 +8,7 @@ use crate::{
 };
 
 /// Marshal provides a function that converts the implemented type to a binary and writes it to a Writer.
-pub trait Marshal {
+pub(crate) trait Marshal {
   /// Marshal to binary and write it to the writer.
   fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()>;
 }
@@ -38,6 +38,14 @@ impl Marshal for u32 {
 }
 
 impl Marshal for u64 {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    w.write_all(&self.to_le_bytes())?;
+
+    Ok(())
+  }
+}
+
+impl Marshal for i32 {
   fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
     w.write_all(&self.to_le_bytes())?;
 

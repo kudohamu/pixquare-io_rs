@@ -1,3 +1,5 @@
+use crate::composite_type::{Corners, FlipAxes};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DumbString(String);
 
@@ -38,5 +40,33 @@ impl OptionSet<u8> {
   // Returns the bit in the n-index position as u8.
   pub fn n_bit(&self, pos: u8) -> u8 {
     self.0 & (1 << pos)
+  }
+}
+
+impl From<Corners> for OptionSet<u8> {
+  fn from(c: Corners) -> Self {
+    let b0: u8 = (if c.top_left { 1 } else { 0 }) << 0;
+    let b1: u8 = (if c.top_left { 1 } else { 0 }) << 1;
+    let b2: u8 = (if c.top_left { 1 } else { 0 }) << 2;
+    let b3: u8 = (if c.top_left { 1 } else { 0 }) << 3;
+    let b4: u8 = (if c.top_left { 1 } else { 0 }) << 4;
+    let b5: u8 = (if c.top_left { 1 } else { 0 }) << 5;
+    let b6: u8 = (if c.top_left { 1 } else { 0 }) << 6;
+    let b7: u8 = (if c.top_left { 1 } else { 0 }) << 7;
+
+    let v = b0 | b1 | b2 | b3 | b4 | b5 | b6 | b7;
+
+    OptionSet(v)
+  }
+}
+
+impl From<FlipAxes> for OptionSet<u8> {
+  fn from(f: FlipAxes) -> Self {
+    let b0: u8 = (if f.horizontal { 1 } else { 0 }) << 0;
+    let b1: u8 = (if f.vertical { 1 } else { 0 }) << 1;
+
+    let v = b0 | b1;
+
+    OptionSet(v)
   }
 }

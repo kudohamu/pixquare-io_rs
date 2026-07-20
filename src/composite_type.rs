@@ -1,10 +1,25 @@
-use crate::{error::ParseError, primitive_type::OptionSet};
+use std::io::Write;
+
+use crate::{
+  error::{PMResult, ParseError},
+  marshaler::Marshal,
+  primitive_type::OptionSet,
+};
 
 /// https://docs.pixquare.art/pixquare-file/binary-specs#coordinate
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Coordinate {
   pub x: i32,
   pub y: i32,
+}
+
+impl Marshal for Coordinate {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    self.x.marshal(w)?;
+    self.y.marshal(w)?;
+
+    Ok(())
+  }
 }
 
 /// https://docs.pixquare.art/pixquare-file/binary-specs#size
@@ -20,11 +35,29 @@ impl Size {
   }
 }
 
+impl Marshal for Size {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    self.width.marshal(w)?;
+    self.height.marshal(w)?;
+
+    Ok(())
+  }
+}
+
 /// https://docs.pixquare.art/pixquare-file/binary-specs#rect
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rect {
   pub origin: Coordinate,
   pub size: Size,
+}
+
+impl Marshal for Rect {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    self.origin.marshal(w)?;
+    self.size.marshal(w)?;
+
+    Ok(())
+  }
 }
 
 /// https://docs.pixquare.art/pixquare-file/binary-specs#argbcolor
@@ -79,6 +112,17 @@ impl TryFrom<&[u8]> for ArgbColor {
   }
 }
 
+impl Marshal for ArgbColor {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    self.r.marshal(w)?;
+    self.g.marshal(w)?;
+    self.b.marshal(w)?;
+    self.a.marshal(w)?;
+
+    Ok(())
+  }
+}
+
 /// https://docs.pixquare.art/pixquare-file/binary-specs#corners
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Corners {
@@ -104,6 +148,16 @@ impl From<OptionSet<u8>> for Corners {
       bottom_left: os.n_flag(6),
       left: os.n_flag(7),
     }
+  }
+}
+
+impl Marshal for Corners {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let o: OptionSet<u8> = (*self).into();
+
+    o.marshal(w)?;
+
+    Ok(())
   }
 }
 
@@ -154,6 +208,39 @@ impl TryFrom<u16> for BlendMode {
   }
 }
 
+impl From<BlendMode> for u16 {
+  fn from(value: BlendMode) -> Self {
+    match value {
+      BlendMode::Normal => 0,
+      BlendMode::Multiply => 1,
+      BlendMode::Screen => 2,
+      BlendMode::Overlay => 3,
+      BlendMode::Darken => 4,
+      BlendMode::Lighten => 5,
+      BlendMode::ColorDodge => 6,
+      BlendMode::ColorBurn => 7,
+      BlendMode::HardLight => 8,
+      BlendMode::SoftLight => 9,
+      BlendMode::Difference => 10,
+      BlendMode::Exclusion => 11,
+      BlendMode::Hue => 12,
+      BlendMode::Saturation => 13,
+      BlendMode::Color => 14,
+      BlendMode::Luminosity => 15,
+    }
+  }
+}
+
+impl Marshal for BlendMode {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let v: u16 = (*self).into();
+
+    w.write_all(&v.to_le_bytes())?;
+
+    Ok(())
+  }
+}
+
 /// Type of custom data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CustomDataType {
@@ -168,6 +255,24 @@ impl TryFrom<u8> for CustomDataType {
       0 => Ok(Self::String),
       _ => Err(ParseError::InvalidCustomDataType),
     }
+  }
+}
+
+impl From<CustomDataType> for u8 {
+  fn from(value: CustomDataType) -> Self {
+    match value {
+      CustomDataType::String => 0,
+    }
+  }
+}
+
+impl Marshal for CustomDataType {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let v: u8 = (*self).into();
+
+    w.write_all(&v.to_le_bytes())?;
+
+    Ok(())
   }
 }
 
@@ -194,6 +299,27 @@ impl TryFrom<u8> for FxType {
   }
 }
 
+impl From<FxType> for u8 {
+  fn from(value: FxType) -> Self {
+    match value {
+      FxType::ColorOverlay => 0,
+      FxType::Outline => 1,
+      FxType::AntiAliasing => 2,
+      FxType::PatternOverlay => 3,
+    }
+  }
+}
+
+impl Marshal for FxType {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let v: u8 = (*self).into();
+
+    w.write_all(&v.to_le_bytes())?;
+
+    Ok(())
+  }
+}
+
 /// Type of Entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntryType {
@@ -217,6 +343,27 @@ impl TryFrom<u8> for EntryType {
   }
 }
 
+impl From<EntryType> for u8 {
+  fn from(value: EntryType) -> Self {
+    match value {
+      EntryType::RegularLayer => 0,
+      EntryType::Group => 1,
+      EntryType::ReferenceLayer => 2,
+      EntryType::TilemapLayer => 3,
+    }
+  }
+}
+
+impl Marshal for EntryType {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let v: u8 = (*self).into();
+
+    w.write_all(&v.to_le_bytes())?;
+
+    Ok(())
+  }
+}
+
 /// Type of GuideLine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GuideLineType {
@@ -235,6 +382,26 @@ impl TryFrom<u8> for GuideLineType {
       2 => Ok(Self::Perspective),
       _ => Err(ParseError::InvalidGuideLineType),
     }
+  }
+}
+
+impl From<GuideLineType> for u8 {
+  fn from(value: GuideLineType) -> Self {
+    match value {
+      GuideLineType::Grid => 0,
+      GuideLineType::Isometric => 1,
+      GuideLineType::Perspective => 2,
+    }
+  }
+}
+
+impl Marshal for GuideLineType {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let v: u8 = (*self).into();
+
+    w.write_all(&v.to_le_bytes())?;
+
+    Ok(())
   }
 }
 
@@ -261,6 +428,27 @@ impl TryFrom<u8> for ProcessorType {
   }
 }
 
+impl From<ProcessorType> for u8 {
+  fn from(value: ProcessorType) -> Self {
+    match value {
+      ProcessorType::Crt => 0,
+      ProcessorType::Vignette => 1,
+      ProcessorType::Bloom => 2,
+      ProcessorType::RoundPixel => 3,
+    }
+  }
+}
+
+impl Marshal for ProcessorType {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let v: u8 = (*self).into();
+
+    w.write_all(&v.to_le_bytes())?;
+
+    Ok(())
+  }
+}
+
 /// Type of Modifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModifierType {
@@ -275,6 +463,24 @@ impl TryFrom<u8> for ModifierType {
       0 => Ok(Self::AnimationSpeedMultiplier),
       _ => Err(ParseError::InvalidModifierType),
     }
+  }
+}
+
+impl From<ModifierType> for u8 {
+  fn from(value: ModifierType) -> Self {
+    match value {
+      ModifierType::AnimationSpeedMultiplier => 0,
+    }
+  }
+}
+
+impl Marshal for ModifierType {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let v: u8 = (*self).into();
+
+    w.write_all(&v.to_le_bytes())?;
+
+    Ok(())
   }
 }
 
@@ -297,6 +503,25 @@ impl TryFrom<u8> for PaletteOrganizationType {
   }
 }
 
+impl From<PaletteOrganizationType> for u8 {
+  fn from(value: PaletteOrganizationType) -> Self {
+    match value {
+      PaletteOrganizationType::Packed => 0,
+      PaletteOrganizationType::Anywhere => 1,
+    }
+  }
+}
+
+impl Marshal for PaletteOrganizationType {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let v: u8 = (*self).into();
+
+    w.write_all(&v.to_le_bytes())?;
+
+    Ok(())
+  }
+}
+
 /// Flip Axes
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FlipAxes {
@@ -306,6 +531,16 @@ pub struct FlipAxes {
   pub vertical: bool,
 }
 
+impl Marshal for FlipAxes {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let v: OptionSet<u8> = (*self).into();
+
+    v.marshal(w)?;
+
+    Ok(())
+  }
+}
+
 /// Symmetry type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SymmetryType {
@@ -313,13 +548,33 @@ pub enum SymmetryType {
   Rotate,
 }
 
-impl From<u8> for SymmetryType {
-  fn from(value: u8) -> Self {
-    if value == 0 {
-      return Self::Mirror;
-    }
+impl TryFrom<u8> for SymmetryType {
+  type Error = ParseError<&'static [u8]>;
 
-    Self::Rotate
+  fn try_from(value: u8) -> Result<Self, Self::Error> {
+    match value {
+      0 => Ok(Self::Mirror),
+      1 => Ok(Self::Rotate),
+      _ => Err(ParseError::InvalidSymmetryLine),
+    }
+  }
+}
+
+impl From<SymmetryType> for u8 {
+  fn from(value: SymmetryType) -> Self {
+    match value {
+      SymmetryType::Mirror => 0,
+      SymmetryType::Rotate => 1,
+    }
+  }
+}
+
+impl Marshal for SymmetryType {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let v: u8 = (*self).into();
+    v.marshal(w)?;
+
+    Ok(())
   }
 }
 
@@ -344,6 +599,25 @@ impl TryFrom<u8> for AnimationDirection {
   }
 }
 
+impl From<AnimationDirection> for u8 {
+  fn from(value: AnimationDirection) -> Self {
+    match value {
+      AnimationDirection::Forward => 0,
+      AnimationDirection::Backward => 1,
+      AnimationDirection::PingPong => 2,
+    }
+  }
+}
+
+impl Marshal for AnimationDirection {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let v: u8 = (*self).into();
+    v.marshal(w)?;
+
+    Ok(())
+  }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColorDepth {
   Rgb,
@@ -359,5 +633,23 @@ impl TryFrom<u8> for ColorDepth {
       1 => Ok(Self::Indexed),
       _ => Err(ParseError::InvalidColorDepth),
     }
+  }
+}
+
+impl From<ColorDepth> for u8 {
+  fn from(value: ColorDepth) -> Self {
+    match value {
+      ColorDepth::Rgb => 0,
+      ColorDepth::Indexed => 1,
+    }
+  }
+}
+
+impl Marshal for ColorDepth {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let v: u8 = (*self).into();
+    v.marshal(w)?;
+
+    Ok(())
   }
 }

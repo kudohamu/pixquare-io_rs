@@ -31,6 +31,8 @@ pub enum ParseError<I> {
   InvalidAnimationDirection,
   /// Unknown value of color depth.
   InvalidColorDepth,
+  /// Unknown value of symmetry line.
+  InvalidSymmetryLine,
   /// Invalid UTF-8 binary.
   InvalidUtf8Error(Utf8Error),
   /// Failed to decompress zlib data.
@@ -54,6 +56,7 @@ impl<I> Display for ParseError<I> {
       }
       Self::InvalidAnimationDirection => write!(f, "unknown value of animation direction"),
       Self::InvalidColorDepth => write!(f, "unknown value of color depth"),
+      Self::InvalidSymmetryLine => write!(f, "unknown value of symmetry line"),
       Self::InvalidUtf8Error(e) => write!(f, "invalid UTF-8 error: {e}"),
       Self::DecompressZlibError => write!(f, "failed to decompress zlib data"),
       Self::Nom(_, e) => write!(f, "nom error: {:?}", e),

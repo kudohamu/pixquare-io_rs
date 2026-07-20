@@ -382,7 +382,7 @@ impl SymmetryLine {
       le_f32,
       le_f32,
       le_u8,
-      map(le_u8, |b| b.into()),
+      map_res(le_u8, |b| b.try_into()),
     )
       .parse(input)?;
 
