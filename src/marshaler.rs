@@ -106,7 +106,12 @@ impl Marshal for OptionSet<u8> {
 
 impl Marshal for String {
   fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
-    w.write_all(self.as_bytes())?;
+    // write string length
+    let s = self.to_string();
+    let len = s.len() as u16;
+    w.write_all(&len.to_le_bytes())?;
+
+    w.write_all(s.as_bytes())?;
 
     Ok(())
   }
@@ -114,12 +119,7 @@ impl Marshal for String {
 
 impl Marshal for DumbString {
   fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
-    // write string length
-    let s = self.to_string();
-    let len = s.len() as u16;
-    w.write_all(&len.to_le_bytes())?;
-
-    w.write_all(s.as_bytes())?;
+    w.write_all(self.to_string().as_bytes())?;
 
     Ok(())
   }
