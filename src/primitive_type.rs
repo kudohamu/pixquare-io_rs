@@ -1,4 +1,7 @@
-use crate::composite_type::{Corners, FlipAxes};
+use crate::{
+  composite_type::{Corners, FlipAxes},
+  marshaler::Marshal,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DumbString(String);

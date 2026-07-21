@@ -928,7 +928,9 @@ impl EntryHeader {
       },
     ))
   }
+}
 
+impl Marshal for EntryHeader {
   fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
     let mut buf = [0u8; 16usize];
     let mut header_writer = &mut buf[..];
@@ -951,6 +953,8 @@ pub struct Entry {
   /// ID.
   /// This ID is the same as the ID of `Layer`, `ReferenceLayer`, `Group`, and `TilemapLayer`.
   pub id: String,
+  /// Entry type.
+  pub entry_type: EntryType,
   remaining_data: Vec<u8>,
 }
 
@@ -967,40 +971,26 @@ impl Entry {
       Self {
         id_len,
         id: id.to_string(),
+        entry_type: header.entry_type,
         remaining_data: remaining_data.into(),
       },
     ))
   }
+}
 
-  fn marshal<W: Write>(
-    &self,
-    w: &mut W,
-    layers: &Vec<Layer>,
-    groups: &Vec<Group>,
-    reference_layers: &Vec<ReferenceLayer>,
-    tilemap_layers: &Vec<TilemapLayer>,
-  ) -> PMResult<()> {
+impl Marshal for Entry {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
     let mut buf = Vec::<u8>::new();
 
     self.id_len.marshal(&mut buf)?;
     DumbString::new(self.id.clone()).marshal(&mut buf)?;
+    self.remaining_data.marshal(w)?;
 
     let data_size = buf.len();
-    let entry_type: EntryType = if layers.iter().any(|l| l.id == self.id) {
-      Ok(EntryType::ReferenceLayer)
-    } else if groups.iter().any(|g| g.id == self.id) {
-      Ok(EntryType::Group)
-    } else if reference_layers.iter().any(|r| r.id == self.id) {
-      Ok(EntryType::ReferenceLayer)
-    } else if tilemap_layers.iter().any(|t| t.id == self.id) {
-      Ok(EntryType::TilemapLayer)
-    } else {
-      Err(MarshalError::EntryItemNotFound(self.id.clone()))
-    }?;
 
     let header = EntryHeader {
       data_size: data_size as u32,
-      entry_type,
+      entry_type: self.entry_type,
     };
     header.marshal(w)?;
     buf.marshal(w)?;
@@ -1172,6 +1162,17 @@ impl GroupHeader {
   }
 }
 
+impl Marshal for GroupHeader {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    self.data_size.marshal(w)?;
+    self.id_len.marshal(w)?;
+    self.name_len.marshal(w)?;
+    self._compat.marshal(w)?;
+
+    Ok(())
+  }
+}
+
 /// A group with all data.
 #[derive(Debug, Clone)]
 pub struct Group {
@@ -1259,6 +1260,39 @@ impl Group {
         remaining_data: remaining_data.into(),
       },
     ))
+  }
+}
+
+impl Marshal for Group {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let mut buf = Vec::<u8>::new();
+    let id_len = self.id.len();
+    let name_len = self.name.len();
+
+    self.id.marshal(&mut buf)?;
+    self.name.marshal(&mut buf)?;
+    self.child_entries.marshal(&mut buf)?;
+    self.opacity.marshal(&mut buf)?;
+    self.visible.marshal(&mut buf)?;
+    self.content_locked.marshal(&mut buf)?;
+    self.selected.marshal(&mut buf)?;
+    self.alpha_locked.marshal(&mut buf)?;
+    self.expanded.marshal(&mut buf)?;
+    self.cropping_masks.marshal(w)?;
+    self.clipping_masks.marshal(w)?;
+    self.color.marshal(w)?;
+    self.remaining_data.marshal(w)?;
+
+    let header = GroupHeader {
+      data_size: buf.len() as u32,
+      id_len: id_len as u8,
+      name_len: name_len as u8,
+      _compat: OptionSet::<u8>::new(0b00001111),
+    };
+    header.marshal(w)?;
+    buf.marshal(w)?;
+
+    Ok(())
   }
 }
 
