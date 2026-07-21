@@ -4,6 +4,10 @@ use crate::composite_type::{Corners, FlipAxes};
 pub(crate) struct DumbString(String);
 
 impl DumbString {
+  pub fn new(s: String) -> Self {
+    Self(s)
+  }
+
   pub fn to_string(&self) -> String {
     self.0.clone()
   }

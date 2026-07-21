@@ -1,11 +1,11 @@
-use std::io::Read;
+use std::io::{Read, Write};
 
 use flate2::read::ZlibDecoder;
 use half::f16;
 use nom::{
   Parser,
   bytes::complete::take,
-  combinator::{map, map_res},
+  combinator::map_res,
   error::ErrorKind,
   multi::many0,
   number::complete::{le_f32, le_f64, le_u8, le_u16, le_u32, le_u64},
@@ -21,8 +21,9 @@ use crate::{
     FlipAxes, FxType, GuideLineType, ModifierType, PaletteOrganizationType, ProcessorType, Rect,
     Size, SymmetryType,
   },
-  error::{MarshalError, PPResult, ParseError},
-  primitive_type::OptionSet,
+  error::{MarshalError, PMResult, PPResult, ParseError},
+  marshaler::Marshal,
+  primitive_type::{DumbString, OptionSet},
 };
 
 /// Header data of CustomData.
@@ -902,6 +903,7 @@ impl Fx {
 }
 
 /// Header data of Entry.
+/// 16 bytes
 /// https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-4
 #[derive(Debug)]
 struct EntryHeader {
@@ -925,6 +927,18 @@ impl EntryHeader {
         entry_type,
       },
     ))
+  }
+
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let mut buf = [0u8; 16usize];
+    let mut header_writer = &mut buf[..];
+
+    self.data_size.marshal(&mut header_writer)?;
+    self.entry_type.marshal(&mut header_writer)?;
+
+    w.write_all(&mut buf)?;
+
+    Ok(())
   }
 }
 
@@ -956,6 +970,42 @@ impl Entry {
         remaining_data: remaining_data.into(),
       },
     ))
+  }
+
+  fn marshal<W: Write>(
+    &self,
+    w: &mut W,
+    layers: &Vec<Layer>,
+    groups: &Vec<Group>,
+    reference_layers: &Vec<ReferenceLayer>,
+    tilemap_layers: &Vec<TilemapLayer>,
+  ) -> PMResult<()> {
+    let mut buf = Vec::<u8>::new();
+
+    self.id_len.marshal(&mut buf)?;
+    DumbString::new(self.id.clone()).marshal(&mut buf)?;
+
+    let data_size = buf.len();
+    let entry_type: EntryType = if layers.iter().any(|l| l.id == self.id) {
+      Ok(EntryType::ReferenceLayer)
+    } else if groups.iter().any(|g| g.id == self.id) {
+      Ok(EntryType::Group)
+    } else if reference_layers.iter().any(|r| r.id == self.id) {
+      Ok(EntryType::ReferenceLayer)
+    } else if tilemap_layers.iter().any(|t| t.id == self.id) {
+      Ok(EntryType::TilemapLayer)
+    } else {
+      Err(MarshalError::EntryItemNotFound(self.id.clone()))
+    }?;
+
+    let header = EntryHeader {
+      data_size: data_size as u32,
+      entry_type,
+    };
+    header.marshal(w)?;
+    buf.marshal(w)?;
+
+    Ok(())
   }
 }
 
@@ -2265,11 +2315,14 @@ impl<'a> Artwork {
       },
     ))
   }
+}
 
-  fn to_binary(&self) -> Vec<u8> {
-    let mut buf = Vec::new();
+impl Marshal for Artwork {
+  fn marshal<W: std::io::prelude::Write>(&self, w: &mut W) -> PMResult<()> {
+    let id = DumbString::new(self.id.clone());
+    let id_len = id.marshal(w)?;
 
-    buf
+    Ok(())
   }
 }
 

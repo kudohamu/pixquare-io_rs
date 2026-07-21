@@ -8,9 +8,9 @@ use crate::{
 };
 
 /// Marshal provides a function that converts the implemented type to a binary and writes it to a Writer.
-pub(crate) trait Marshal {
+pub(crate) trait Marshal<T = ()> {
   /// Marshal to binary and write it to the writer.
-  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()>;
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<T>;
 }
 
 impl Marshal for u8 {
@@ -104,16 +104,16 @@ impl Marshal for OptionSet<u8> {
   }
 }
 
-impl Marshal for String {
-  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+impl Marshal<usize> for String {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<usize> {
     // write string length
     let s = self.to_string();
-    let len = s.len() as u16;
-    w.write_all(&len.to_le_bytes())?;
+    let len = s.len();
+    w.write_all(&(len as u16).to_le_bytes())?;
 
     w.write_all(s.as_bytes())?;
 
-    Ok(())
+    Ok(len)
   }
 }
 

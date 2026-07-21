@@ -103,18 +103,24 @@ impl<'a> From<ParseError<&'a str>> for nom::Err<ParseError<&'a str>> {
 
 pub type PPResult<I, T> = nom::IResult<I, T, ParseError<I>>;
 
-impl Display for MarshalError {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      Self::IoError(e) => write!(f, "I/O error: {e}"),
-    }
-  }
-}
-
 /// Represent error converting .px file to binary.
 #[derive(Debug)]
 pub enum MarshalError {
   IoError(io::Error),
+  EntryItemNotFound(String),
+}
+
+impl Display for MarshalError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::IoError(e) => write!(f, "I/O error: {e}"),
+      Self::EntryItemNotFound(s) => write!(
+        f,
+        "entry id: `{}` is not found in any of Regular layer, Group, Reference layer or Tilemap layer",
+        s
+      ),
+    }
+  }
 }
 
 impl From<io::Error> for MarshalError {
@@ -127,6 +133,7 @@ impl std::error::Error for MarshalError {
   fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
     match self {
       Self::IoError(e) => Some(e),
+      _ => None,
     }
   }
 }
