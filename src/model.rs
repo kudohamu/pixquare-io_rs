@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
 
-use flate2::read::ZlibDecoder;
+use flate2::{Compression, read::ZlibDecoder, write::ZlibEncoder};
 use half::f16;
 use nom::{
   Parser,
@@ -148,6 +148,7 @@ impl Marshal for CustomData {
 }
 
 /// Header data of FrameContent.
+/// 32 bytes
 /// https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes
 #[derive(Debug)]
 struct FrameContentHeader {
@@ -184,6 +185,23 @@ impl FrameContentHeader {
   }
 }
 
+impl Marshal for FrameContentHeader {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let mut buf = [0u8; 32usize];
+    let mut header_writer = &mut buf[..];
+
+    self.data_size.marshal(&mut header_writer)?;
+    self.id_len.marshal(&mut header_writer)?;
+    self.color_len.marshal(&mut header_writer)?;
+    self.compressed_color_len.marshal(&mut header_writer)?;
+    self._compat.marshal(&mut header_writer)?;
+
+    w.write_all(&buf)?;
+
+    Ok(())
+  }
+}
+
 /// The color data of a cel.
 /// https://docs.pixquare.art/pixquare-file/binary-specs#content-1
 #[derive(Debug, Clone)]
@@ -210,6 +228,41 @@ impl FrameContent {
         remaining_data: remaining_data.into(),
       },
     ))
+  }
+}
+
+impl Marshal for FrameContent {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let mut buf = Vec::<u8>::new();
+
+    let id_len = self.id.len();
+    let color_len = self.colors.len() * 4;
+
+    // encode colors
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+
+    for color in self.colors.iter() {
+      color.marshal(&mut encoder)?;
+    }
+    let compressed_color_data = encoder.finish()?;
+    let compressed_color_len = compressed_color_data.len();
+
+    DumbString::new(self.id.clone()).marshal(&mut buf)?;
+    compressed_color_data.marshal(&mut buf)?;
+    self.remaining_data.marshal(&mut buf)?;
+
+    let data_size = buf.len();
+    let header = FrameContentHeader {
+      data_size: data_size as u64,
+      id_len: id_len as u8,
+      color_len: color_len as u32,
+      compressed_color_len: compressed_color_len as u32,
+      _compat: OptionSet::<u8>::new(0b00000001),
+    };
+    header.marshal(w)?;
+    buf.marshal(w)?;
+
+    Ok(())
   }
 }
 
