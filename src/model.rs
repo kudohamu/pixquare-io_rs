@@ -1659,6 +1659,22 @@ impl ReferenceLayerHeader {
   }
 }
 
+impl Marshal for ReferenceLayerHeader {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let mut buf = [0u8; 32usize];
+    let mut header_writer = &mut buf[..];
+
+    self.data_size.marshal(&mut header_writer)?;
+    self.png_data_len.marshal(&mut header_writer)?;
+    self.id_len.marshal(&mut header_writer)?;
+    self.name_len.marshal(&mut header_writer)?;
+
+    w.write_all(&buf)?;
+
+    Ok(())
+  }
+}
+
 /// A reference layer with all data.
 /// https://docs.pixquare.art/pixquare-file/binary-specs#content-11
 #[derive(Debug, Clone)]
@@ -1730,6 +1746,40 @@ impl ReferenceLayer {
         remaining_data: remaining_data.into(),
       },
     ))
+  }
+}
+
+impl Marshal for ReferenceLayer {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let mut buf = Vec::<u8>::new();
+
+    let id_len = self.id.len();
+    let data_len = self.png_data.len();
+    let name_len = self.name.len();
+
+    DumbString::new(self.id.clone()).marshal(&mut buf)?;
+    self.png_data.marshal(&mut buf)?;
+    DumbString::new(self.name.clone()).marshal(&mut buf)?;
+    self.opacity.marshal(&mut buf)?;
+    self.visible.marshal(&mut buf)?;
+    self.selected.marshal(&mut buf)?;
+    self.bounds.marshal(&mut buf)?;
+    self.angle.marshal(&mut buf)?;
+    self.color.marshal(&mut buf)?;
+    self.flip_axes.marshal(&mut buf)?;
+    self.remaining_data.marshal(&mut buf)?;
+
+    let data_size = buf.len();
+    let header = ReferenceLayerHeader {
+      data_size: data_size as u32,
+      png_data_len: data_len as u64,
+      id_len: id_len as u8,
+      name_len: name_len as u8,
+    };
+    header.marshal(w)?;
+    buf.marshal(w)?;
+
+    Ok(())
   }
 }
 
