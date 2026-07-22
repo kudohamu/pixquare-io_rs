@@ -140,6 +140,21 @@ where
   }
 }
 
+impl<T, const N: usize> Marshal for [T; N]
+where
+  T: Marshal,
+{
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let len = self.len() as u64;
+
+    for i in 0..len {
+      self[i as usize].marshal(w)?;
+    }
+
+    Ok(())
+  }
+}
+
 impl<T> Marshal for TypeN<T>
 where
   T: Marshal,

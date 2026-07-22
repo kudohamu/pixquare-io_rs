@@ -23,8 +23,31 @@ use crate::{
   },
   error::{MarshalError, PMResult, PPResult, ParseError},
   marshaler::Marshal,
-  primitive_type::{DumbString, OptionSet},
+  primitive_type::{DumbString, OptionSet, TypeN},
 };
+
+trait ModelMarshal {
+  type Header: Marshal;
+  const HEADER_SIZE: usize;
+
+  fn write_data(&self, w: &mut [u8]) -> PMResult<Self::Header>;
+}
+
+impl<T: ModelMarshal> Marshal<()> for T {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let mut data_buf = Vec::<u8>::new();
+    let mut header_buf = vec![0u8; Self::HEADER_SIZE];
+    let mut header_writer = &mut header_buf[..];
+
+    let header = self.write_data(&mut data_buf)?;
+    header.marshal(&mut header_writer)?;
+
+    w.write_all(&header_buf)?;
+    data_buf.marshal(w)?;
+
+    Ok(())
+  }
+}
 
 /// Header data of CustomData.
 /// 16 bytes
@@ -56,13 +79,8 @@ impl CustomDataHeader {
 
 impl Marshal for CustomDataHeader {
   fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
-    let mut buf = [0u8; 16usize];
-    let mut header_writer = &mut buf[..];
-
-    self.data_size.marshal(&mut header_writer)?;
-    self.data_type.marshal(&mut header_writer)?;
-
-    w.write_all(&buf)?;
+    self.data_size.marshal(w)?;
+    self.data_type.marshal(w)?;
 
     Ok(())
   }
@@ -94,22 +112,21 @@ impl<'a> CustomDataStringContent {
   }
 }
 
-impl Marshal for CustomDataStringContent {
-  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
-    let mut buf = Vec::<u8>::new();
+impl ModelMarshal for CustomDataStringContent {
+  type Header = CustomDataHeader;
+  const HEADER_SIZE: usize = 16usize;
 
-    self.content.marshal(&mut buf)?;
-    self.remaining_data.marshal(&mut buf)?;
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+    self.content.marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
 
-    let data_size = buf.len();
+    let data_size = w.len();
     let header = CustomDataHeader {
       data_size: data_size as u64,
       data_type: CustomDataType::String,
     };
-    header.marshal(w)?;
-    buf.marshal(w)?;
 
-    Ok(())
+    Ok(header)
   }
 }
 
@@ -187,16 +204,11 @@ impl FrameContentHeader {
 
 impl Marshal for FrameContentHeader {
   fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
-    let mut buf = [0u8; 32usize];
-    let mut header_writer = &mut buf[..];
-
-    self.data_size.marshal(&mut header_writer)?;
-    self.id_len.marshal(&mut header_writer)?;
-    self.color_len.marshal(&mut header_writer)?;
-    self.compressed_color_len.marshal(&mut header_writer)?;
-    self._compat.marshal(&mut header_writer)?;
-
-    w.write_all(&buf)?;
+    self.data_size.marshal(w)?;
+    self.id_len.marshal(w)?;
+    self.color_len.marshal(w)?;
+    self.compressed_color_len.marshal(w)?;
+    self._compat.marshal(w)?;
 
     Ok(())
   }
@@ -231,10 +243,11 @@ impl FrameContent {
   }
 }
 
-impl Marshal for FrameContent {
-  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
-    let mut buf = Vec::<u8>::new();
+impl ModelMarshal for FrameContent {
+  type Header = FrameContentHeader;
+  const HEADER_SIZE: usize = 32usize;
 
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
     let id_len = self.id.len();
     let color_len = self.colors.len() * 4;
 
@@ -247,22 +260,18 @@ impl Marshal for FrameContent {
     let compressed_color_data = encoder.finish()?;
     let compressed_color_len = compressed_color_data.len();
 
-    DumbString::new(self.id.clone()).marshal(&mut buf)?;
-    compressed_color_data.marshal(&mut buf)?;
-    self.remaining_data.marshal(&mut buf)?;
+    DumbString::new(self.id.clone()).marshal(&mut w)?;
+    compressed_color_data.marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
 
-    let data_size = buf.len();
-    let header = FrameContentHeader {
+    let data_size = w.len();
+    Ok(FrameContentHeader {
       data_size: data_size as u64,
       id_len: id_len as u8,
       color_len: color_len as u32,
       compressed_color_len: compressed_color_len as u32,
       _compat: OptionSet::<u8>::new(0b00000001),
-    };
-    header.marshal(w)?;
-    buf.marshal(w)?;
-
-    Ok(())
+    })
   }
 }
 
@@ -282,6 +291,14 @@ impl TilemapFrameContentHeader {
     let (_input, data_size) = le_u64.parse(input)?;
 
     Ok((rest, Self { data_size }))
+  }
+}
+
+impl Marshal for TilemapFrameContentHeader {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    self.data_size.marshal(w)?;
+
+    Ok(())
   }
 }
 
@@ -326,6 +343,29 @@ impl TilemapFrameContent {
   }
 }
 
+impl ModelMarshal for TilemapFrameContent {
+  type Header = TilemapFrameContentHeader;
+  const HEADER_SIZE: usize = 32usize;
+
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+    self.id.marshal(&mut w)?;
+    self.tile_size.marshal(&mut w)?;
+
+    let mut tiles_buf = Vec::<u8>::new();
+    TypeN(self.tiles.clone()).marshal(&mut tiles_buf)?;
+    let tiles_len = tiles_buf.len() as u64;
+    tiles_len.marshal(&mut w)?;
+    tiles_buf.marshal(&mut w)?;
+
+    self.remaining_data.marshal(&mut w)?;
+
+    let data_size = w.len();
+    Ok(TilemapFrameContentHeader {
+      data_size: data_size as u64,
+    })
+  }
+}
+
 /// Header data of Frame.
 /// 32 bytes
 /// https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-2
@@ -358,14 +398,9 @@ impl FrameHeader {
 
 impl Marshal for FrameHeader {
   fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
-    let mut buf = [0u8; 32usize];
-    let mut header_writer = &mut buf[..];
-
-    self.data_size.marshal(&mut header_writer)?;
-    self.id_len.marshal(&mut header_writer)?;
-    self.content_len.marshal(&mut header_writer)?;
-
-    w.write_all(&buf)?;
+    self.data_size.marshal(w)?;
+    self.id_len.marshal(w)?;
+    self.content_len.marshal(w)?;
 
     Ok(())
   }
@@ -430,32 +465,29 @@ impl Frame {
   }
 }
 
-impl Marshal for Frame {
-  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
-    let mut buf = Vec::<u8>::new();
+impl ModelMarshal for Frame {
+  type Header = FrameHeader;
+  const HEADER_SIZE: usize = 32usize;
 
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
     let id_len = self.id.len();
     let content_len = self.content_id.len();
 
-    DumbString::new(self.id.clone()).marshal(&mut buf)?;
-    self.duration.marshal(&mut buf)?;
-    self.selected.marshal(&mut buf)?;
-    DumbString::new(self.content_id.clone()).marshal(&mut buf)?;
-    self.opacity.marshal(&mut buf)?;
-    self.z_index.marshal(&mut buf)?;
-    self.custom_datas.marshal(&mut buf)?;
-    self.remaining_data.marshal(&mut buf)?;
+    DumbString::new(self.id.clone()).marshal(&mut w)?;
+    self.duration.marshal(&mut w)?;
+    self.selected.marshal(&mut w)?;
+    DumbString::new(self.content_id.clone()).marshal(&mut w)?;
+    self.opacity.marshal(&mut w)?;
+    self.z_index.marshal(&mut w)?;
+    self.custom_datas.marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
 
-    let data_size = buf.len();
-    let header = FrameHeader {
+    let data_size = w.len();
+    return Ok(FrameHeader {
       data_size: data_size as u32,
       id_len: id_len as u8,
       content_len: content_len as u8,
-    };
-    header.marshal(w)?;
-    buf.marshal(w)?;
-
-    Ok(())
+    });
   }
 }
 
@@ -486,6 +518,16 @@ impl SymmetryLineHeader {
         _compat,
       },
     ))
+  }
+}
+
+impl Marshal for SymmetryLineHeader {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    self.data_size.marshal(w)?;
+    self.id_len.marshal(w)?;
+    self._compat.marshal(w)?;
+
+    Ok(())
   }
 }
 
@@ -549,6 +591,33 @@ impl SymmetryLine {
   }
 }
 
+impl ModelMarshal for SymmetryLine {
+  type Header = SymmetryLineHeader;
+  const HEADER_SIZE: usize = 16usize;
+
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+    let id_len = self.id.len();
+
+    DumbString::new(self.id.clone()).marshal(&mut w)?;
+    self.color.marshal(&mut w)?;
+    self.selected.marshal(&mut w)?;
+    self.enabled.marshal(&mut w)?;
+    self.origin_x.marshal(&mut w)?;
+    self.origin_y.marshal(&mut w)?;
+    self.angle.marshal(&mut w)?;
+    self.segment_count.marshal(&mut w)?;
+    self.symmetry_type.marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
+
+    let data_size = w.len();
+    Ok(SymmetryLineHeader {
+      data_size: data_size as u32,
+      id_len: id_len as u8,
+      _compat: OptionSet::<u8>::new(0b00000011),
+    })
+  }
+}
+
 /// Header data of Tag.
 /// 16 bytes.
 /// https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-2
@@ -576,6 +645,16 @@ impl TagHeader {
         name_len,
       },
     ))
+  }
+}
+
+impl Marshal for TagHeader {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    self.data_size.marshal(w)?;
+    self.id_len.marshal(w)?;
+    self.name_len.marshal(w)?;
+
+    Ok(())
   }
 }
 
@@ -646,6 +725,33 @@ impl Tag {
   }
 }
 
+impl ModelMarshal for Tag {
+  type Header = TagHeader;
+  const HEADER_SIZE: usize = 16usize;
+
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+    let id_len = self.id.len();
+    let name_len = self.name.len();
+
+    DumbString::new(self.id.clone()).marshal(&mut w)?;
+    DumbString::new(self.name.clone()).marshal(&mut w)?;
+    self.start_index.marshal(&mut w)?;
+    self.end_index.marshal(&mut w)?;
+    self.enabled.marshal(&mut w)?;
+    self.color.marshal(&mut w)?;
+    self.direction.marshal(&mut w)?;
+    self.loop_count.marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
+
+    let data_size = w.len();
+    Ok(TagHeader {
+      data_size: data_size as u32,
+      id_len: id_len as u8,
+      name_len: name_len as u8,
+    })
+  }
+}
+
 /// Header data of PaletteOrganization for Tileset.
 /// 32 bytes
 #[derive(Debug)]
@@ -671,6 +777,15 @@ impl TilesetPaletteOrganizationHeader {
         organization_type,
       },
     ))
+  }
+}
+
+impl Marshal for TilesetPaletteOrganizationHeader {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    self.data_size.marshal(w)?;
+    self.organization_type.marshal(w)?;
+
+    Ok(())
   }
 }
 
@@ -700,6 +815,22 @@ impl<'a> TilesetPaletteOrganizationAnywhereContent {
   }
 }
 
+impl ModelMarshal for TilesetPaletteOrganizationAnywhereContent {
+  type Header = TilesetPaletteOrganizationHeader;
+  const HEADER_SIZE: usize = 32usize;
+
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+    self.arrangements.marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
+
+    let data_size = w.len();
+    Ok(TilesetPaletteOrganizationHeader {
+      data_size: data_size as u32,
+      organization_type: PaletteOrganizationType::Anywhere,
+    })
+  }
+}
+
 /// PaletteOrganization settings for Tileset.
 /// This model is not listed in the official binary-spec.
 /// (This is the data structure I analyzed from real binary data :))
@@ -726,6 +857,27 @@ impl TilesetPaletteOrganization {
   }
 }
 
+impl Marshal for TilesetPaletteOrganization {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    match self {
+      TilesetPaletteOrganization::Packed => {
+        let header = TilesetPaletteOrganizationHeader {
+          data_size: 0,
+          organization_type: PaletteOrganizationType::Packed,
+        };
+        header.marshal(w)?;
+
+        Ok(())
+      }
+      TilesetPaletteOrganization::Anywhere(content) => {
+        content.marshal(w)?;
+
+        Ok(())
+      }
+    }
+  }
+}
+
 /// Header data of Tileset.
 /// 32 bytes
 /// https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-3
@@ -742,6 +894,14 @@ impl TilesetHeader {
     let (_input, data_size) = le_u32.parse(input)?;
 
     Ok((rest, Self { data_size }))
+  }
+}
+
+impl Marshal for TilesetHeader {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    self.data_size.marshal(w)?;
+
+    Ok(())
   }
 }
 
@@ -830,6 +990,46 @@ impl Tileset {
   }
 }
 
+impl ModelMarshal for Tileset {
+  type Header = TilesetHeader;
+  const HEADER_SIZE: usize = 32usize;
+
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+    self.id.marshal(&mut w)?;
+    self.name.marshal(&mut w)?;
+    self.tile_size.marshal(&mut w)?;
+
+    let mut compressed_colors = Vec::<Vec<u8>>::new();
+
+    for image_colors in self.tile_images.iter() {
+      let mut buf = Vec::<u8>::new();
+      let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+
+      for color in image_colors.iter() {
+        color.marshal(&mut encoder)?;
+      }
+
+      let compressed_color_data = encoder.finish()?;
+      let compressed_color_len = compressed_color_data.len() as u64;
+      compressed_color_len.marshal(&mut buf)?;
+      compressed_color_data.marshal(&mut buf)?;
+
+      compressed_colors.push(buf);
+    }
+
+    compressed_colors.marshal(&mut w)?;
+    self.tiles_per_row.marshal(&mut w)?;
+    self.grid_color.marshal(&mut w)?;
+    self.palette_organization.marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
+
+    let data_size = w.len();
+    Ok(TilesetHeader {
+      data_size: data_size as u32,
+    })
+  }
+}
+
 /// Header data of Fx.
 /// 16 bytes
 /// https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-3
@@ -853,13 +1053,8 @@ impl FxHeader {
 
 impl Marshal for FxHeader {
   fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
-    let mut buf = [0u8; 16usize];
-    let mut header_writer = &mut buf[..];
-
-    self.data_size.marshal(&mut header_writer)?;
-    self.fx_type.marshal(&mut header_writer)?;
-
-    w.write_all(&buf)?;
+    self.data_size.marshal(w)?;
+    self.fx_type.marshal(w)?;
 
     Ok(())
   }
@@ -897,24 +1092,21 @@ impl<'a> FxColorOverlayContent {
   }
 }
 
-impl Marshal for FxColorOverlayContent {
-  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
-    let mut buf = Vec::<u8>::new();
+impl ModelMarshal for FxColorOverlayContent {
+  type Header = FxHeader;
+  const HEADER_SIZE: usize = 16usize;
 
-    self.enabled.marshal(&mut buf)?;
-    self.color.marshal(&mut buf)?;
-    self.blend_mode.marshal(&mut buf)?;
-    self.remaining_data.marshal(&mut buf)?;
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+    self.enabled.marshal(&mut w)?;
+    self.color.marshal(&mut w)?;
+    self.blend_mode.marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
 
-    let data_size = buf.len();
-    let header = FxHeader {
+    let data_size = w.len();
+    Ok(FxHeader {
       data_size: data_size as u64,
       fx_type: FxType::ColorOverlay,
-    };
-    header.marshal(w)?;
-    buf.marshal(w)?;
-
-    Ok(())
+    })
   }
 }
 
@@ -967,27 +1159,24 @@ impl<'a> FxOutlineContent {
   }
 }
 
-impl Marshal for FxOutlineContent {
-  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
-    let mut buf = Vec::<u8>::new();
+impl ModelMarshal for FxOutlineContent {
+  type Header = FxHeader;
+  const HEADER_SIZE: usize = 16usize;
 
-    self.enabled.marshal(&mut buf)?;
-    self.corners.marshal(&mut buf)?;
-    self.color.marshal(&mut buf)?;
-    self.ignored_colors.marshal(&mut buf)?;
-    self.is_outside.marshal(&mut buf)?;
-    self.is_water_color_on.marshal(&mut buf)?;
-    self.remaining_data.marshal(&mut buf)?;
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+    self.enabled.marshal(&mut w)?;
+    self.corners.marshal(&mut w)?;
+    self.color.marshal(&mut w)?;
+    self.ignored_colors.marshal(&mut w)?;
+    self.is_outside.marshal(&mut w)?;
+    self.is_water_color_on.marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
 
-    let data_size = buf.len();
-    let header = FxHeader {
+    let data_size = w.len();
+    Ok(FxHeader {
       data_size: data_size as u64,
       fx_type: FxType::Outline,
-    };
-    header.marshal(w)?;
-    buf.marshal(w)?;
-
-    Ok(())
+    })
   }
 }
 
@@ -1023,24 +1212,21 @@ impl<'a> FxAntiAliasingContent {
   }
 }
 
-impl Marshal for FxAntiAliasingContent {
-  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
-    let mut buf = Vec::<u8>::new();
+impl ModelMarshal for FxAntiAliasingContent {
+  type Header = FxHeader;
+  const HEADER_SIZE: usize = 16usize;
 
-    self.enabled.marshal(&mut buf)?;
-    self.corners.marshal(&mut buf)?;
-    self.intensity.marshal(&mut buf)?;
-    self.remaining_data.marshal(&mut buf)?;
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+    self.enabled.marshal(&mut w)?;
+    self.corners.marshal(&mut w)?;
+    self.intensity.marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
 
-    let data_size = buf.len();
-    let header = FxHeader {
+    let data_size = w.len();
+    Ok(FxHeader {
       data_size: data_size as u64,
       fx_type: FxType::AntiAliasing,
-    };
-    header.marshal(w)?;
-    buf.marshal(w)?;
-
-    Ok(())
+    })
   }
 }
 
@@ -1085,26 +1271,23 @@ impl<'a> FxPatternOverlaryContent {
   }
 }
 
-impl Marshal for FxPatternOverlaryContent {
-  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
-    let mut buf = Vec::<u8>::new();
+impl ModelMarshal for FxPatternOverlaryContent {
+  type Header = FxHeader;
+  const HEADER_SIZE: usize = 16usize;
 
-    self.enabled.marshal(&mut buf)?;
-    self.patterns.marshal(&mut buf)?;
-    self.pattern_size.marshal(&mut buf)?;
-    self.opacity.marshal(&mut buf)?;
-    self.blend_mode.marshal(&mut buf)?;
-    self.remaining_data.marshal(&mut buf)?;
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+    self.enabled.marshal(&mut w)?;
+    self.patterns.marshal(&mut w)?;
+    self.pattern_size.marshal(&mut w)?;
+    self.opacity.marshal(&mut w)?;
+    self.blend_mode.marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
 
-    let data_size = buf.len();
-    let header = FxHeader {
+    let data_size = w.len();
+    Ok(FxHeader {
       data_size: data_size as u64,
       fx_type: FxType::PatternOverlay,
-    };
-    header.marshal(w)?;
-    buf.marshal(w)?;
-
-    Ok(())
+    })
   }
 }
 
@@ -1201,13 +1384,8 @@ impl EntryHeader {
 
 impl Marshal for EntryHeader {
   fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
-    let mut buf = [0u8; 16usize];
-    let mut header_writer = &mut buf[..];
-
-    self.data_size.marshal(&mut header_writer)?;
-    self.entry_type.marshal(&mut header_writer)?;
-
-    w.write_all(&mut buf)?;
+    self.data_size.marshal(w)?;
+    self.entry_type.marshal(w)?;
 
     Ok(())
   }
@@ -1247,24 +1425,20 @@ impl Entry {
   }
 }
 
-impl Marshal for Entry {
-  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
-    let mut buf = Vec::<u8>::new();
+impl ModelMarshal for Entry {
+  type Header = EntryHeader;
+  const HEADER_SIZE: usize = 16usize;
 
-    self.id_len.marshal(&mut buf)?;
-    DumbString::new(self.id.clone()).marshal(&mut buf)?;
-    self.remaining_data.marshal(w)?;
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+    self.id_len.marshal(&mut w)?;
+    DumbString::new(self.id.clone()).marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
 
-    let data_size = buf.len();
-
-    let header = EntryHeader {
+    let data_size = w.len();
+    Ok(EntryHeader {
       data_size: data_size as u32,
       entry_type: self.entry_type,
-    };
-    header.marshal(w)?;
-    buf.marshal(w)?;
-
-    Ok(())
+    })
   }
 }
 
@@ -1300,15 +1474,10 @@ impl LayerHeader {
 
 impl Marshal for LayerHeader {
   fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
-    let mut buf = [0u8; 32usize];
-    let mut header_writer = &mut buf[..];
-
-    self.data_size.marshal(&mut header_writer)?;
-    self.id_len.marshal(&mut header_writer)?;
-    self.name_len.marshal(&mut header_writer)?;
-    self._compat.marshal(&mut header_writer)?;
-
-    w.write_all(&buf)?;
+    self.data_size.marshal(w)?;
+    self.id_len.marshal(w)?;
+    self.name_len.marshal(w)?;
+    self._compat.marshal(w)?;
 
     Ok(())
   }
@@ -1415,40 +1584,37 @@ impl Layer {
   }
 }
 
-impl Marshal for Layer {
-  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
-    let mut buf = Vec::<u8>::new();
+impl ModelMarshal for Layer {
+  type Header = LayerHeader;
+  const HEADER_SIZE: usize = 32usize;
 
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
     let id_len = self.id.len();
     let name_len = self.name.len();
 
-    DumbString::new(self.id.clone()).marshal(&mut buf)?;
-    DumbString::new(self.name.clone()).marshal(&mut buf)?;
-    self.frames.marshal(&mut buf)?;
-    self.opacity.marshal(&mut buf)?;
-    self.visible.marshal(&mut buf)?;
-    self.locked.marshal(&mut buf)?;
-    self.selected.marshal(&mut buf)?;
-    self.alpha_locked.marshal(&mut buf)?;
-    self.blend_mode.marshal(&mut buf)?;
-    self.linked.marshal(&mut buf)?;
-    self.cropping_masks.marshal(&mut buf)?;
-    self.clipping_masks.marshal(&mut buf)?;
-    self.color.marshal(&mut buf)?;
-    self.fxs.marshal(&mut buf)?;
-    self.remaining_data.marshal(&mut buf)?;
+    DumbString::new(self.id.clone()).marshal(&mut w)?;
+    DumbString::new(self.name.clone()).marshal(&mut w)?;
+    self.frames.marshal(&mut w)?;
+    self.opacity.marshal(&mut w)?;
+    self.visible.marshal(&mut w)?;
+    self.locked.marshal(&mut w)?;
+    self.selected.marshal(&mut w)?;
+    self.alpha_locked.marshal(&mut w)?;
+    self.blend_mode.marshal(&mut w)?;
+    self.linked.marshal(&mut w)?;
+    self.cropping_masks.marshal(&mut w)?;
+    self.clipping_masks.marshal(&mut w)?;
+    self.color.marshal(&mut w)?;
+    self.fxs.marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
 
-    let data_size = buf.len();
-    let header = LayerHeader {
+    let data_size = w.len();
+    Ok(LayerHeader {
       data_size: data_size as u32,
       id_len: id_len as u8,
       name_len: name_len as u8,
       _compat: OptionSet::<u8>::new(0b00001111),
-    };
-    header.marshal(w)?;
-    buf.marshal(w)?;
-
-    Ok(())
+    })
   }
 }
 
@@ -1488,15 +1654,10 @@ impl GroupHeader {
 
 impl Marshal for GroupHeader {
   fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
-    let mut buf = [0u8; 32usize];
-    let mut header_writer = &mut buf[..];
-
-    self.data_size.marshal(&mut header_writer)?;
-    self.id_len.marshal(&mut header_writer)?;
-    self.name_len.marshal(&mut header_writer)?;
-    self._compat.marshal(&mut header_writer)?;
-
-    w.write_all(&buf)?;
+    self.data_size.marshal(w)?;
+    self.id_len.marshal(w)?;
+    self.name_len.marshal(w)?;
+    self._compat.marshal(w)?;
 
     Ok(())
   }
@@ -1592,36 +1753,34 @@ impl Group {
   }
 }
 
-impl Marshal for Group {
-  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
-    let mut buf = Vec::<u8>::new();
+impl ModelMarshal for Group {
+  type Header = GroupHeader;
+  const HEADER_SIZE: usize = 32usize;
+
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
     let id_len = self.id.len();
     let name_len = self.name.len();
 
-    DumbString::new(self.id.clone()).marshal(&mut buf)?;
-    DumbString::new(self.name.clone()).marshal(&mut buf)?;
-    self.child_entries.marshal(&mut buf)?;
-    self.opacity.marshal(&mut buf)?;
-    self.visible.marshal(&mut buf)?;
-    self.content_locked.marshal(&mut buf)?;
-    self.selected.marshal(&mut buf)?;
-    self.alpha_locked.marshal(&mut buf)?;
-    self.expanded.marshal(&mut buf)?;
-    self.cropping_masks.marshal(w)?;
-    self.clipping_masks.marshal(w)?;
-    self.color.marshal(w)?;
-    self.remaining_data.marshal(w)?;
+    DumbString::new(self.id.clone()).marshal(&mut w)?;
+    DumbString::new(self.name.clone()).marshal(&mut w)?;
+    self.child_entries.marshal(&mut w)?;
+    self.opacity.marshal(&mut w)?;
+    self.visible.marshal(&mut w)?;
+    self.content_locked.marshal(&mut w)?;
+    self.selected.marshal(&mut w)?;
+    self.alpha_locked.marshal(&mut w)?;
+    self.expanded.marshal(&mut w)?;
+    self.cropping_masks.marshal(&mut w)?;
+    self.clipping_masks.marshal(&mut w)?;
+    self.color.marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
 
-    let header = GroupHeader {
-      data_size: buf.len() as u32,
+    Ok(GroupHeader {
+      data_size: w.len() as u32,
       id_len: id_len as u8,
       name_len: name_len as u8,
       _compat: OptionSet::<u8>::new(0b00001111),
-    };
-    header.marshal(w)?;
-    buf.marshal(w)?;
-
-    Ok(())
+    })
   }
 }
 
@@ -1661,15 +1820,10 @@ impl ReferenceLayerHeader {
 
 impl Marshal for ReferenceLayerHeader {
   fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
-    let mut buf = [0u8; 32usize];
-    let mut header_writer = &mut buf[..];
-
-    self.data_size.marshal(&mut header_writer)?;
-    self.png_data_len.marshal(&mut header_writer)?;
-    self.id_len.marshal(&mut header_writer)?;
-    self.name_len.marshal(&mut header_writer)?;
-
-    w.write_all(&buf)?;
+    self.data_size.marshal(w)?;
+    self.png_data_len.marshal(w)?;
+    self.id_len.marshal(w)?;
+    self.name_len.marshal(w)?;
 
     Ok(())
   }
@@ -1749,37 +1903,34 @@ impl ReferenceLayer {
   }
 }
 
-impl Marshal for ReferenceLayer {
-  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
-    let mut buf = Vec::<u8>::new();
+impl ModelMarshal for ReferenceLayer {
+  type Header = ReferenceLayerHeader;
+  const HEADER_SIZE: usize = 32usize;
 
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
     let id_len = self.id.len();
     let data_len = self.png_data.len();
     let name_len = self.name.len();
 
-    DumbString::new(self.id.clone()).marshal(&mut buf)?;
-    self.png_data.marshal(&mut buf)?;
-    DumbString::new(self.name.clone()).marshal(&mut buf)?;
-    self.opacity.marshal(&mut buf)?;
-    self.visible.marshal(&mut buf)?;
-    self.selected.marshal(&mut buf)?;
-    self.bounds.marshal(&mut buf)?;
-    self.angle.marshal(&mut buf)?;
-    self.color.marshal(&mut buf)?;
-    self.flip_axes.marshal(&mut buf)?;
-    self.remaining_data.marshal(&mut buf)?;
+    DumbString::new(self.id.clone()).marshal(&mut w)?;
+    self.png_data.marshal(&mut w)?;
+    DumbString::new(self.name.clone()).marshal(&mut w)?;
+    self.opacity.marshal(&mut w)?;
+    self.visible.marshal(&mut w)?;
+    self.selected.marshal(&mut w)?;
+    self.bounds.marshal(&mut w)?;
+    self.angle.marshal(&mut w)?;
+    self.color.marshal(&mut w)?;
+    self.flip_axes.marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
 
-    let data_size = buf.len();
-    let header = ReferenceLayerHeader {
+    let data_size = w.len();
+    Ok(ReferenceLayerHeader {
       data_size: data_size as u32,
       png_data_len: data_len as u64,
       id_len: id_len as u8,
       name_len: name_len as u8,
-    };
-    header.marshal(w)?;
-    buf.marshal(w)?;
-
-    Ok(())
+    })
   }
 }
 
@@ -1799,6 +1950,14 @@ impl TilemapLayerHeader {
     let (_input, data_size) = le_u32.parse(input)?;
 
     Ok((rest, Self { data_size }))
+  }
+}
+
+impl Marshal for TilemapLayerHeader {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    self.data_size.marshal(w)?;
+
+    Ok(())
   }
 }
 
@@ -1884,6 +2043,31 @@ impl TilemapLayer {
   }
 }
 
+impl ModelMarshal for TilemapLayer {
+  type Header = TilemapLayerHeader;
+  const HEADER_SIZE: usize = 32usize;
+
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+    self.id.marshal(&mut w)?;
+    self.tileset_id.marshal(&mut w)?;
+    self.name.marshal(&mut w)?;
+    self.frames.marshal(&mut w)?;
+    self.opacity.marshal(&mut w)?;
+    self.visible.marshal(&mut w)?;
+    self.locked.marshal(&mut w)?;
+    self.selected.marshal(&mut w)?;
+    self.alpha_locked.marshal(&mut w)?;
+    self.blend_mode.marshal(&mut w)?;
+    self.linked.marshal(&mut w)?;
+    self.color.marshal(&mut w)?;
+
+    let data_size = w.len();
+    Ok(TilemapLayerHeader {
+      data_size: data_size as u32,
+    })
+  }
+}
+
 /// Header data of Stats.
 /// 16 bytes
 /// https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-5
@@ -1899,6 +2083,14 @@ impl StatsHeader {
     let (_input, data_size) = le_u16.parse(input)?;
 
     Ok((rest, Self { data_size }))
+  }
+}
+
+impl Marshal for StatsHeader {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    self.data_size.marshal(w)?;
+
+    Ok(())
   }
 }
 
@@ -1939,6 +2131,24 @@ impl Stats {
   }
 }
 
+impl ModelMarshal for Stats {
+  type Header = StatsHeader;
+  const HEADER_SIZE: usize = 16usize;
+
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+    self.spent.marshal(&mut w)?;
+    self.stroke_count.marshal(&mut w)?;
+    self.undos_count.marshal(&mut w)?;
+    self.redos_count.marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
+
+    let data_size = w.len();
+    Ok(StatsHeader {
+      data_size: data_size as u16,
+    })
+  }
+}
+
 /// Settings data of grid for canvas.
 /// https://docs.pixquare.art/pixquare-file/binary-specs#canvasgrid
 #[derive(Debug, Clone)]
@@ -1960,6 +2170,16 @@ impl CanvasGrid {
         second_color,
       },
     ))
+  }
+}
+
+impl Marshal for CanvasGrid {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    self.size.marshal(w)?;
+    self.first_color.marshal(w)?;
+    self.second_color.marshal(w)?;
+
+    Ok(())
   }
 }
 
