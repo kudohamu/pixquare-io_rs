@@ -2211,6 +2211,16 @@ impl GuideLineHeader {
   }
 }
 
+impl Marshal for GuideLineHeader {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    self._compat.marshal(w)?;
+    self.data_size.marshal(w)?;
+    self.guide_line_type.marshal(w)?;
+
+    Ok(())
+  }
+}
+
 /// Content data of grid type for GuideLine.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GuideLineGridContent {
@@ -2242,6 +2252,26 @@ impl<'a> GuideLineGridContent {
         },
       ))
     }
+  }
+}
+
+impl ModelMarshal for GuideLineGridContent {
+  type Header = GuideLineHeader;
+  const HEADER_SIZE: usize = 14usize;
+
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+    self.size.marshal(&mut w)?;
+    self.color.marshal(&mut w)?;
+    self.visible.marshal(&mut w)?;
+    self.is_shown_in_preview.marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
+
+    let data_size = w.len();
+    Ok(GuideLineHeader {
+      _compat: 0,
+      data_size: data_size as u16,
+      guide_line_type: GuideLineType::Grid,
+    })
   }
 }
 
@@ -2280,6 +2310,27 @@ impl<'a> GuideLineIsometricContent {
         },
       ))
     }
+  }
+}
+
+impl ModelMarshal for GuideLineIsometricContent {
+  type Header = GuideLineHeader;
+  const HEADER_SIZE: usize = 14usize;
+
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+    self.size.marshal(&mut w)?;
+    self.color.marshal(&mut w)?;
+    self.visible.marshal(&mut w)?;
+    self.is_shown_in_preview.marshal(&mut w)?;
+    self.is_shown_vertical_line.marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
+
+    let data_size = w.len();
+    Ok(GuideLineHeader {
+      _compat: 0,
+      data_size: data_size as u16,
+      guide_line_type: GuideLineType::Isometric,
+    })
   }
 }
 
@@ -2335,6 +2386,28 @@ impl<'a> GuideLinePerspectiveContent {
   }
 }
 
+impl ModelMarshal for GuideLinePerspectiveContent {
+  type Header = GuideLineHeader;
+  const HEADER_SIZE: usize = 14usize;
+
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+    self.x_coordinates.marshal(&mut w)?;
+    self.y_coordinates.marshal(&mut w)?;
+    self.line_counts.marshal(&mut w)?;
+    self.colors.marshal(&mut w)?;
+    self.visible.marshal(&mut w)?;
+    self.is_shown_in_preview.marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
+
+    let data_size = w.len();
+    Ok(GuideLineHeader {
+      _compat: 0,
+      data_size: data_size as u16,
+      guide_line_type: GuideLineType::Perspective,
+    })
+  }
+}
+
 /// Settings data of GuideLine.
 /// https://docs.pixquare.art/pixquare-file/binary-specs#content-14
 #[derive(Debug, Clone, PartialEq)]
@@ -2371,6 +2444,28 @@ impl GuideLine {
   }
 }
 
+impl Marshal for GuideLine {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    match self {
+      GuideLine::Grid(content) => {
+        content.marshal(w)?;
+
+        Ok(())
+      }
+      GuideLine::Isometric(content) => {
+        content.marshal(w)?;
+
+        Ok(())
+      }
+      GuideLine::Perspective(content) => {
+        content.marshal(w)?;
+
+        Ok(())
+      }
+    }
+  }
+}
+
 /// Header data of Post-processor.
 /// 16 bytes
 /// https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-6
@@ -2395,6 +2490,15 @@ impl PostProcessorHeader {
         processor_type,
       },
     ))
+  }
+}
+
+impl Marshal for PostProcessorHeader {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    self.data_size.marshal(w)?;
+    self.processor_type.marshal(w)?;
+
+    Ok(())
   }
 }
 
@@ -2437,6 +2541,26 @@ impl<'a> PostProcessorCrtContent {
   }
 }
 
+impl ModelMarshal for PostProcessorCrtContent {
+  type Header = PostProcessorHeader;
+  const HEADER_SIZE: usize = 16usize;
+
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+    self.id.marshal(&mut w)?;
+    self.is_pixel_independent.marshal(&mut w)?;
+    self.scan_line_intensity.marshal(&mut w)?;
+    self.glow_intensity.marshal(&mut w)?;
+    self.enabled.marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
+
+    let data_size = w.len();
+    Ok(PostProcessorHeader {
+      data_size: data_size as u16,
+      processor_type: ProcessorType::Crt,
+    })
+  }
+}
+
 /// Content data of Vignette for Post-processor.
 #[derive(Debug, Clone)]
 pub struct PostProcessorVignetteContent {
@@ -2470,6 +2594,26 @@ impl<'a> PostProcessorVignetteContent {
         },
       ))
     }
+  }
+}
+
+impl ModelMarshal for PostProcessorVignetteContent {
+  type Header = PostProcessorHeader;
+  const HEADER_SIZE: usize = 16usize;
+
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+    self.id.marshal(&mut w)?;
+    self.is_pixel_independent.marshal(&mut w)?;
+    self.color.marshal(&mut w)?;
+    self.intensity.marshal(&mut w)?;
+    self.enabled.marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
+
+    let data_size = w.len();
+    Ok(PostProcessorHeader {
+      data_size: data_size as u16,
+      processor_type: ProcessorType::Vignette,
+    })
   }
 }
 
@@ -2513,6 +2657,27 @@ impl<'a> PostProcessorBloomContent {
   }
 }
 
+impl ModelMarshal for PostProcessorBloomContent {
+  type Header = PostProcessorHeader;
+  const HEADER_SIZE: usize = 16usize;
+
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+    self.id.marshal(&mut w)?;
+    self.is_pixel_independent.marshal(&mut w)?;
+    self.threshold.marshal(&mut w)?;
+    self.intensity.marshal(&mut w)?;
+    self.radius.marshal(&mut w)?;
+    self.enabled.marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
+
+    let data_size = w.len();
+    Ok(PostProcessorHeader {
+      data_size: data_size as u16,
+      processor_type: ProcessorType::Bloom,
+    })
+  }
+}
+
 /// Content data of Round pixel for Post-processor.
 #[derive(Debug, Clone)]
 pub struct PostProcessorRoundPixelContent {
@@ -2546,6 +2711,26 @@ impl<'a> PostProcessorRoundPixelContent {
         },
       ))
     }
+  }
+}
+
+impl ModelMarshal for PostProcessorRoundPixelContent {
+  type Header = PostProcessorHeader;
+  const HEADER_SIZE: usize = 16usize;
+
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+    self.id.marshal(&mut w)?;
+    self.is_contiguous.marshal(&mut w)?;
+    self.background_color.marshal(&mut w)?;
+    self.intensity.marshal(&mut w)?;
+    self.enabled.marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
+
+    let data_size = w.len();
+    Ok(PostProcessorHeader {
+      data_size: data_size as u16,
+      processor_type: ProcessorType::RoundPixel,
+    })
   }
 }
 
@@ -2591,6 +2776,29 @@ impl PostProcessor {
   }
 }
 
+impl Marshal for PostProcessor {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    match self {
+      PostProcessor::Crt(content) => {
+        content.marshal(w)?;
+        Ok(())
+      }
+      PostProcessor::Vignette(content) => {
+        content.marshal(w)?;
+        Ok(())
+      }
+      PostProcessor::Bloom(content) => {
+        content.marshal(w)?;
+        Ok(())
+      }
+      PostProcessor::RoundPixel(content) => {
+        content.marshal(w)?;
+        Ok(())
+      }
+    }
+  }
+}
+
 /// Header data of Modifier.
 /// 16 bytes
 /// https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-7
@@ -2614,6 +2822,15 @@ impl ModifierHeader {
         modifier_type,
       },
     ))
+  }
+}
+
+impl Marshal for ModifierHeader {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    self.data_size.marshal(w)?;
+    self.modifier_type.marshal(w)?;
+
+    Ok(())
   }
 }
 
@@ -2649,6 +2866,24 @@ impl<'a> ModifierAnimationSpeedMultiplierContent {
   }
 }
 
+impl ModelMarshal for ModifierAnimationSpeedMultiplierContent {
+  type Header = ModifierHeader;
+  const HEADER_SIZE: usize = 16usize;
+
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+    self.id.marshal(&mut w)?;
+    self.enabled.marshal(&mut w)?;
+    self.multiplier.marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
+
+    let data_size = w.len();
+    Ok(ModifierHeader {
+      data_size: data_size as u64,
+      modifier_type: ModifierType::AnimationSpeedMultiplier,
+    })
+  }
+}
+
 /// https://docs.pixquare.art/pixquare-file/binary-specs#content-16
 #[derive(Debug, Clone)]
 pub enum Modifier {
@@ -2666,6 +2901,18 @@ impl Modifier {
             .parse(input)?;
 
         Ok((input, Self::AnimationSpeedMultiplier(content)))
+      }
+    }
+  }
+}
+
+impl Marshal for Modifier {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    match self {
+      Modifier::AnimationSpeedMultiplier(content) => {
+        content.marshal(w)?;
+
+        Ok(())
       }
     }
   }
@@ -2695,6 +2942,15 @@ impl PaletteOrganizationHeader {
         organization_type,
       },
     ))
+  }
+}
+
+impl Marshal for PaletteOrganizationHeader {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    self.data_size.marshal(w)?;
+    self.organization_type.marshal(w)?;
+
+    Ok(())
   }
 }
 
@@ -2731,6 +2987,23 @@ impl<'a> PaletteOrganizationAnywhereContent {
   }
 }
 
+impl ModelMarshal for PaletteOrganizationAnywhereContent {
+  type Header = PaletteOrganizationHeader;
+  const HEADER_SIZE: usize = 16usize;
+
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+    self.size.marshal(&mut w)?;
+    TypeN(self.arrangements.clone()).marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
+
+    let data_size = w.len();
+    Ok(PaletteOrganizationHeader {
+      data_size: data_size as u16,
+      organization_type: PaletteOrganizationType::Anywhere,
+    })
+  }
+}
+
 /// https://docs.pixquare.art/pixquare-file/binary-specs#content-17
 #[derive(Debug, Clone, PartialEq)]
 pub enum PaletteOrganization {
@@ -2754,6 +3027,27 @@ impl PaletteOrganization {
   }
 }
 
+impl Marshal for PaletteOrganization {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    match self {
+      PaletteOrganization::Packed => {
+        let header = PaletteOrganizationHeader {
+          data_size: 0,
+          organization_type: PaletteOrganizationType::Packed,
+        };
+        header.marshal(w)?;
+
+        Ok(())
+      }
+      PaletteOrganization::Anywhere(content) => {
+        content.marshal(w)?;
+
+        Ok(())
+      }
+    }
+  }
+}
+
 /// Header data of Artwork.
 /// https://docs.pixquare.art/pixquare-file/binary-specs#header-64-bytes
 #[derive(Debug)]
@@ -2763,7 +3057,7 @@ struct ArtworkHeader {
   /// Length of `id`.
   pub id_len: u8,
   /// Backward compatibility. Always 2.
-  _compat_data: u16,
+  _compat: u16,
 }
 
 impl ArtworkHeader {
@@ -2778,9 +3072,19 @@ impl ArtworkHeader {
       Self {
         file_size,
         id_len,
-        _compat_data: compat,
+        _compat: compat,
       },
     ))
+  }
+}
+
+impl Marshal for ArtworkHeader {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    self.file_size.marshal(w)?;
+    self.id_len.marshal(w)?;
+    self._compat.marshal(w)?;
+
+    Ok(())
   }
 }
 
@@ -2850,7 +3154,9 @@ impl<'a> Artwork {
   }
 
   /// Writes the file in Aseprite binary format to any writer.
-  pub fn write<W: std::io::Write>(&self, w: W) -> Result<(), MarshalError> {
+  pub fn write<W: std::io::Write>(&self, w: &mut W) -> Result<(), MarshalError> {
+    self.marshal(w)?;
+
     Ok(())
   }
 
@@ -2950,12 +3256,45 @@ impl<'a> Artwork {
   }
 }
 
-impl Marshal for Artwork {
-  fn marshal<W: std::io::prelude::Write>(&self, w: &mut W) -> PMResult<()> {
-    let id = DumbString::new(self.id.clone());
-    let id_len = id.marshal(w)?;
+impl ModelMarshal for Artwork {
+  type Header = ArtworkHeader;
+  const HEADER_SIZE: usize = 64usize;
 
-    Ok(())
+  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+    let id_len = self.id.len();
+
+    DumbString::new(self.id.clone()).marshal(&mut w)?;
+    self.canvas_size.marshal(&mut w)?;
+    self.entries.marshal(&mut w)?;
+    self.groups.marshal(&mut w)?;
+    self.layers.marshal(&mut w)?;
+    self.frame_contents.marshal(&mut w)?;
+    self.palette.marshal(&mut w)?;
+    self.reference_layers.marshal(&mut w)?;
+    self.reference_images.marshal(&mut w)?;
+    self.symmetry_lines.marshal(&mut w)?;
+    self.tags.marshal(&mut w)?;
+    self.tilesets.marshal(&mut w)?;
+    self.tilemap_layers.marshal(&mut w)?;
+    self.tilemap_frame_contents.marshal(&mut w)?;
+    self.color_depth.marshal(&mut w)?;
+    self.stats.marshal(&mut w)?;
+    self._unused.marshal(&mut w)?;
+    self.canvas_grid.marshal(&mut w)?;
+    self.guide_line.marshal(&mut w)?;
+    self.post_processors.marshal(&mut w)?;
+    self.palette_organization.marshal(&mut w)?;
+    self.is_need_timelapse.marshal(&mut w)?;
+    self.tiled_corners.marshal(&mut w)?;
+    self.modifiers.marshal(&mut w)?;
+    self.remaining_data.marshal(&mut w)?;
+
+    let file_size = w.len() + Self::HEADER_SIZE;
+    Ok(ArtworkHeader {
+      file_size: file_size as u64,
+      id_len: id_len as u8,
+      _compat: 2,
+    })
   }
 }
 
