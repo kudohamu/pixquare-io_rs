@@ -1,7 +1,4 @@
-use crate::{
-  composite_type::{Corners, FlipAxes},
-  marshaler::Marshal,
-};
+use crate::composite_type::{Corners, FlipAxes};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DumbString(String);
@@ -22,7 +19,13 @@ impl From<String> for DumbString {
   }
 }
 
-pub(crate) struct TypeN<T>(pub Vec<T>);
+pub(crate) struct TypeN<'a, T>(pub &'a [T]);
+
+impl<'a, T> TypeN<'a, T> {
+  pub fn new(arr: &'a [T]) -> Self {
+    Self(arr)
+  }
+}
 
 pub trait Uint {}
 

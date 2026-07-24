@@ -131,6 +131,7 @@ where
 {
   fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
     let len = self.len() as u64;
+    len.marshal(w)?;
 
     for i in 0..len {
       self[i as usize].marshal(w)?;
@@ -155,7 +156,7 @@ where
   }
 }
 
-impl<T> Marshal for TypeN<T>
+impl<'a, T> Marshal for TypeN<'a, T>
 where
   T: Marshal,
 {

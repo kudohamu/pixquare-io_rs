@@ -24,18 +24,19 @@ use crate::{
   error::{MarshalError, PMResult, PPResult, ParseError},
   marshaler::Marshal,
   primitive_type::{DumbString, OptionSet, TypeN},
+  writer::{CountingWrite, CountingWriter},
 };
 
 trait ModelMarshal {
   type Header: Marshal;
   const HEADER_SIZE: usize;
 
-  fn write_data(&self, w: &mut [u8]) -> PMResult<Self::Header>;
+  fn write_data<W: CountingWrite>(&self, w: &mut W) -> PMResult<Self::Header>;
 }
 
 impl<T: ModelMarshal> Marshal<()> for T {
   fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
-    let mut data_buf = Vec::<u8>::new();
+    let mut data_buf = CountingWriter::new(Vec::<u8>::new());
     let mut header_buf = vec![0u8; Self::HEADER_SIZE];
     let mut header_writer = &mut header_buf[..];
 
@@ -43,7 +44,7 @@ impl<T: ModelMarshal> Marshal<()> for T {
     header.marshal(&mut header_writer)?;
 
     w.write_all(&header_buf)?;
-    data_buf.marshal(w)?;
+    w.write_all(&data_buf.inner)?;
 
     Ok(())
   }
@@ -116,11 +117,11 @@ impl ModelMarshal for CustomDataStringContent {
   type Header = CustomDataHeader;
   const HEADER_SIZE: usize = 16usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     self.content.marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     let header = CustomDataHeader {
       data_size: data_size as u64,
       data_type: CustomDataType::String,
@@ -247,7 +248,7 @@ impl ModelMarshal for FrameContent {
   type Header = FrameContentHeader;
   const HEADER_SIZE: usize = 32usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     let id_len = self.id.len();
     let color_len = self.colors.len() * 4;
 
@@ -261,10 +262,10 @@ impl ModelMarshal for FrameContent {
     let compressed_color_len = compressed_color_data.len();
 
     DumbString::new(self.id.clone()).marshal(&mut w)?;
-    compressed_color_data.marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&compressed_color_data).marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     Ok(FrameContentHeader {
       data_size: data_size as u64,
       id_len: id_len as u8,
@@ -347,19 +348,19 @@ impl ModelMarshal for TilemapFrameContent {
   type Header = TilemapFrameContentHeader;
   const HEADER_SIZE: usize = 32usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     self.id.marshal(&mut w)?;
     self.tile_size.marshal(&mut w)?;
 
     let mut tiles_buf = Vec::<u8>::new();
-    TypeN(self.tiles.clone()).marshal(&mut tiles_buf)?;
+    TypeN::new(&self.tiles).marshal(&mut tiles_buf)?;
     let tiles_len = tiles_buf.len() as u64;
     tiles_len.marshal(&mut w)?;
-    tiles_buf.marshal(&mut w)?;
+    TypeN::new(&tiles_buf).marshal(&mut w)?;
 
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     Ok(TilemapFrameContentHeader {
       data_size: data_size as u64,
     })
@@ -469,7 +470,7 @@ impl ModelMarshal for Frame {
   type Header = FrameHeader;
   const HEADER_SIZE: usize = 32usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     let id_len = self.id.len();
     let content_len = self.content_id.len();
 
@@ -480,9 +481,9 @@ impl ModelMarshal for Frame {
     self.opacity.marshal(&mut w)?;
     self.z_index.marshal(&mut w)?;
     self.custom_datas.marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     return Ok(FrameHeader {
       data_size: data_size as u32,
       id_len: id_len as u8,
@@ -595,7 +596,7 @@ impl ModelMarshal for SymmetryLine {
   type Header = SymmetryLineHeader;
   const HEADER_SIZE: usize = 16usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     let id_len = self.id.len();
 
     DumbString::new(self.id.clone()).marshal(&mut w)?;
@@ -607,9 +608,9 @@ impl ModelMarshal for SymmetryLine {
     self.angle.marshal(&mut w)?;
     self.segment_count.marshal(&mut w)?;
     self.symmetry_type.marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     Ok(SymmetryLineHeader {
       data_size: data_size as u32,
       id_len: id_len as u8,
@@ -729,7 +730,7 @@ impl ModelMarshal for Tag {
   type Header = TagHeader;
   const HEADER_SIZE: usize = 16usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     let id_len = self.id.len();
     let name_len = self.name.len();
 
@@ -741,9 +742,9 @@ impl ModelMarshal for Tag {
     self.color.marshal(&mut w)?;
     self.direction.marshal(&mut w)?;
     self.loop_count.marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     Ok(TagHeader {
       data_size: data_size as u32,
       id_len: id_len as u8,
@@ -789,6 +790,23 @@ impl Marshal for TilesetPaletteOrganizationHeader {
   }
 }
 
+/// Content data of Packed for TilesetPaletteOrganization.
+#[derive(Debug, Clone, PartialEq)]
+struct TilesetPaletteOrganizationPackedContent;
+
+impl ModelMarshal for TilesetPaletteOrganizationPackedContent {
+  type Header = TilesetPaletteOrganizationHeader;
+  const HEADER_SIZE: usize = 32usize;
+
+  fn write_data<W: CountingWrite>(&self, w: &mut W) -> PMResult<Self::Header> {
+    let data_size = w.written_bytes();
+    Ok(TilesetPaletteOrganizationHeader {
+      data_size: data_size as u32,
+      organization_type: PaletteOrganizationType::Packed,
+    })
+  }
+}
+
 /// Content data of Anywhere for TilesetPaletteOrganization.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TilesetPaletteOrganizationAnywhereContent {
@@ -819,11 +837,11 @@ impl ModelMarshal for TilesetPaletteOrganizationAnywhereContent {
   type Header = TilesetPaletteOrganizationHeader;
   const HEADER_SIZE: usize = 32usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     self.arrangements.marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     Ok(TilesetPaletteOrganizationHeader {
       data_size: data_size as u32,
       organization_type: PaletteOrganizationType::Anywhere,
@@ -861,11 +879,7 @@ impl Marshal for TilesetPaletteOrganization {
   fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
     match self {
       TilesetPaletteOrganization::Packed => {
-        let header = TilesetPaletteOrganizationHeader {
-          data_size: 0,
-          organization_type: PaletteOrganizationType::Packed,
-        };
-        header.marshal(w)?;
+        TilesetPaletteOrganizationPackedContent.marshal(w)?;
 
         Ok(())
       }
@@ -994,7 +1008,7 @@ impl ModelMarshal for Tileset {
   type Header = TilesetHeader;
   const HEADER_SIZE: usize = 32usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     self.id.marshal(&mut w)?;
     self.name.marshal(&mut w)?;
     self.tile_size.marshal(&mut w)?;
@@ -1012,7 +1026,7 @@ impl ModelMarshal for Tileset {
       let compressed_color_data = encoder.finish()?;
       let compressed_color_len = compressed_color_data.len() as u64;
       compressed_color_len.marshal(&mut buf)?;
-      compressed_color_data.marshal(&mut buf)?;
+      TypeN::new(&compressed_color_data).marshal(&mut buf)?;
 
       compressed_colors.push(buf);
     }
@@ -1021,9 +1035,9 @@ impl ModelMarshal for Tileset {
     self.tiles_per_row.marshal(&mut w)?;
     self.grid_color.marshal(&mut w)?;
     self.palette_organization.marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     Ok(TilesetHeader {
       data_size: data_size as u32,
     })
@@ -1096,13 +1110,13 @@ impl ModelMarshal for FxColorOverlayContent {
   type Header = FxHeader;
   const HEADER_SIZE: usize = 16usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     self.enabled.marshal(&mut w)?;
     self.color.marshal(&mut w)?;
     self.blend_mode.marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     Ok(FxHeader {
       data_size: data_size as u64,
       fx_type: FxType::ColorOverlay,
@@ -1163,16 +1177,16 @@ impl ModelMarshal for FxOutlineContent {
   type Header = FxHeader;
   const HEADER_SIZE: usize = 16usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     self.enabled.marshal(&mut w)?;
     self.corners.marshal(&mut w)?;
     self.color.marshal(&mut w)?;
     self.ignored_colors.marshal(&mut w)?;
     self.is_outside.marshal(&mut w)?;
     self.is_water_color_on.marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     Ok(FxHeader {
       data_size: data_size as u64,
       fx_type: FxType::Outline,
@@ -1216,13 +1230,13 @@ impl ModelMarshal for FxAntiAliasingContent {
   type Header = FxHeader;
   const HEADER_SIZE: usize = 16usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     self.enabled.marshal(&mut w)?;
     self.corners.marshal(&mut w)?;
     self.intensity.marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     Ok(FxHeader {
       data_size: data_size as u64,
       fx_type: FxType::AntiAliasing,
@@ -1275,15 +1289,15 @@ impl ModelMarshal for FxPatternOverlaryContent {
   type Header = FxHeader;
   const HEADER_SIZE: usize = 16usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     self.enabled.marshal(&mut w)?;
     self.patterns.marshal(&mut w)?;
     self.pattern_size.marshal(&mut w)?;
     self.opacity.marshal(&mut w)?;
     self.blend_mode.marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     Ok(FxHeader {
       data_size: data_size as u64,
       fx_type: FxType::PatternOverlay,
@@ -1429,12 +1443,12 @@ impl ModelMarshal for Entry {
   type Header = EntryHeader;
   const HEADER_SIZE: usize = 16usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     self.id_len.marshal(&mut w)?;
     DumbString::new(self.id.clone()).marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     Ok(EntryHeader {
       data_size: data_size as u32,
       entry_type: self.entry_type,
@@ -1588,7 +1602,7 @@ impl ModelMarshal for Layer {
   type Header = LayerHeader;
   const HEADER_SIZE: usize = 32usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     let id_len = self.id.len();
     let name_len = self.name.len();
 
@@ -1606,9 +1620,9 @@ impl ModelMarshal for Layer {
     self.clipping_masks.marshal(&mut w)?;
     self.color.marshal(&mut w)?;
     self.fxs.marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     Ok(LayerHeader {
       data_size: data_size as u32,
       id_len: id_len as u8,
@@ -1757,7 +1771,7 @@ impl ModelMarshal for Group {
   type Header = GroupHeader;
   const HEADER_SIZE: usize = 32usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     let id_len = self.id.len();
     let name_len = self.name.len();
 
@@ -1773,10 +1787,10 @@ impl ModelMarshal for Group {
     self.cropping_masks.marshal(&mut w)?;
     self.clipping_masks.marshal(&mut w)?;
     self.color.marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
     Ok(GroupHeader {
-      data_size: w.len() as u32,
+      data_size: w.written_bytes() as u32,
       id_len: id_len as u8,
       name_len: name_len as u8,
       _compat: OptionSet::<u8>::new(0b00001111),
@@ -1907,13 +1921,13 @@ impl ModelMarshal for ReferenceLayer {
   type Header = ReferenceLayerHeader;
   const HEADER_SIZE: usize = 32usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     let id_len = self.id.len();
     let data_len = self.png_data.len();
     let name_len = self.name.len();
 
     DumbString::new(self.id.clone()).marshal(&mut w)?;
-    self.png_data.marshal(&mut w)?;
+    TypeN::new(&self.png_data).marshal(&mut w)?;
     DumbString::new(self.name.clone()).marshal(&mut w)?;
     self.opacity.marshal(&mut w)?;
     self.visible.marshal(&mut w)?;
@@ -1922,9 +1936,9 @@ impl ModelMarshal for ReferenceLayer {
     self.angle.marshal(&mut w)?;
     self.color.marshal(&mut w)?;
     self.flip_axes.marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     Ok(ReferenceLayerHeader {
       data_size: data_size as u32,
       png_data_len: data_len as u64,
@@ -2047,7 +2061,7 @@ impl ModelMarshal for TilemapLayer {
   type Header = TilemapLayerHeader;
   const HEADER_SIZE: usize = 32usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     self.id.marshal(&mut w)?;
     self.tileset_id.marshal(&mut w)?;
     self.name.marshal(&mut w)?;
@@ -2060,8 +2074,9 @@ impl ModelMarshal for TilemapLayer {
     self.blend_mode.marshal(&mut w)?;
     self.linked.marshal(&mut w)?;
     self.color.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     Ok(TilemapLayerHeader {
       data_size: data_size as u32,
     })
@@ -2135,14 +2150,14 @@ impl ModelMarshal for Stats {
   type Header = StatsHeader;
   const HEADER_SIZE: usize = 16usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     self.spent.marshal(&mut w)?;
     self.stroke_count.marshal(&mut w)?;
     self.undos_count.marshal(&mut w)?;
     self.redos_count.marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     Ok(StatsHeader {
       data_size: data_size as u16,
     })
@@ -2259,14 +2274,14 @@ impl ModelMarshal for GuideLineGridContent {
   type Header = GuideLineHeader;
   const HEADER_SIZE: usize = 14usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     self.size.marshal(&mut w)?;
     self.color.marshal(&mut w)?;
     self.visible.marshal(&mut w)?;
     self.is_shown_in_preview.marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     Ok(GuideLineHeader {
       _compat: 0,
       data_size: data_size as u16,
@@ -2317,15 +2332,15 @@ impl ModelMarshal for GuideLineIsometricContent {
   type Header = GuideLineHeader;
   const HEADER_SIZE: usize = 14usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     self.size.marshal(&mut w)?;
     self.color.marshal(&mut w)?;
     self.visible.marshal(&mut w)?;
     self.is_shown_in_preview.marshal(&mut w)?;
     self.is_shown_vertical_line.marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     Ok(GuideLineHeader {
       _compat: 0,
       data_size: data_size as u16,
@@ -2390,16 +2405,16 @@ impl ModelMarshal for GuideLinePerspectiveContent {
   type Header = GuideLineHeader;
   const HEADER_SIZE: usize = 14usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     self.x_coordinates.marshal(&mut w)?;
     self.y_coordinates.marshal(&mut w)?;
     self.line_counts.marshal(&mut w)?;
     self.colors.marshal(&mut w)?;
     self.visible.marshal(&mut w)?;
     self.is_shown_in_preview.marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     Ok(GuideLineHeader {
       _compat: 0,
       data_size: data_size as u16,
@@ -2545,15 +2560,15 @@ impl ModelMarshal for PostProcessorCrtContent {
   type Header = PostProcessorHeader;
   const HEADER_SIZE: usize = 16usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     self.id.marshal(&mut w)?;
     self.is_pixel_independent.marshal(&mut w)?;
     self.scan_line_intensity.marshal(&mut w)?;
     self.glow_intensity.marshal(&mut w)?;
     self.enabled.marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     Ok(PostProcessorHeader {
       data_size: data_size as u16,
       processor_type: ProcessorType::Crt,
@@ -2601,7 +2616,7 @@ impl ModelMarshal for PostProcessorVignetteContent {
   type Header = PostProcessorHeader;
   const HEADER_SIZE: usize = 16usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     self.id.marshal(&mut w)?;
     self.is_pixel_independent.marshal(&mut w)?;
     self.color.marshal(&mut w)?;
@@ -2609,7 +2624,7 @@ impl ModelMarshal for PostProcessorVignetteContent {
     self.enabled.marshal(&mut w)?;
     self.remaining_data.marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     Ok(PostProcessorHeader {
       data_size: data_size as u16,
       processor_type: ProcessorType::Vignette,
@@ -2661,16 +2676,16 @@ impl ModelMarshal for PostProcessorBloomContent {
   type Header = PostProcessorHeader;
   const HEADER_SIZE: usize = 16usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     self.id.marshal(&mut w)?;
     self.is_pixel_independent.marshal(&mut w)?;
     self.threshold.marshal(&mut w)?;
     self.intensity.marshal(&mut w)?;
     self.radius.marshal(&mut w)?;
     self.enabled.marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     Ok(PostProcessorHeader {
       data_size: data_size as u16,
       processor_type: ProcessorType::Bloom,
@@ -2718,15 +2733,15 @@ impl ModelMarshal for PostProcessorRoundPixelContent {
   type Header = PostProcessorHeader;
   const HEADER_SIZE: usize = 16usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     self.id.marshal(&mut w)?;
     self.is_contiguous.marshal(&mut w)?;
     self.background_color.marshal(&mut w)?;
     self.intensity.marshal(&mut w)?;
     self.enabled.marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     Ok(PostProcessorHeader {
       data_size: data_size as u16,
       processor_type: ProcessorType::RoundPixel,
@@ -2870,13 +2885,13 @@ impl ModelMarshal for ModifierAnimationSpeedMultiplierContent {
   type Header = ModifierHeader;
   const HEADER_SIZE: usize = 16usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     self.id.marshal(&mut w)?;
     self.enabled.marshal(&mut w)?;
     self.multiplier.marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     Ok(ModifierHeader {
       data_size: data_size as u64,
       modifier_type: ModifierType::AnimationSpeedMultiplier,
@@ -2954,6 +2969,23 @@ impl Marshal for PaletteOrganizationHeader {
   }
 }
 
+/// Content data of Packed for PaletteOrganization.
+#[derive(Debug, Clone, PartialEq)]
+struct PaletteOrganizationPackedContent;
+
+impl ModelMarshal for PaletteOrganizationPackedContent {
+  type Header = PaletteOrganizationHeader;
+  const HEADER_SIZE: usize = 16usize;
+
+  fn write_data<W: CountingWrite>(&self, w: &mut W) -> PMResult<Self::Header> {
+    let data_size = w.written_bytes();
+    Ok(PaletteOrganizationHeader {
+      data_size: data_size as u16,
+      organization_type: PaletteOrganizationType::Packed,
+    })
+  }
+}
+
 /// Content data of Anywhere for PaletteOrganization.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PaletteOrganizationAnywhereContent {
@@ -2991,12 +3023,12 @@ impl ModelMarshal for PaletteOrganizationAnywhereContent {
   type Header = PaletteOrganizationHeader;
   const HEADER_SIZE: usize = 16usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     self.size.marshal(&mut w)?;
-    TypeN(self.arrangements.clone()).marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.arrangements).marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let data_size = w.len();
+    let data_size = w.written_bytes();
     Ok(PaletteOrganizationHeader {
       data_size: data_size as u16,
       organization_type: PaletteOrganizationType::Anywhere,
@@ -3031,11 +3063,7 @@ impl Marshal for PaletteOrganization {
   fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
     match self {
       PaletteOrganization::Packed => {
-        let header = PaletteOrganizationHeader {
-          data_size: 0,
-          organization_type: PaletteOrganizationType::Packed,
-        };
-        header.marshal(w)?;
+        PaletteOrganizationPackedContent.marshal(w)?;
 
         Ok(())
       }
@@ -3260,7 +3288,7 @@ impl ModelMarshal for Artwork {
   type Header = ArtworkHeader;
   const HEADER_SIZE: usize = 64usize;
 
-  fn write_data(&self, mut w: &mut [u8]) -> PMResult<Self::Header> {
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     let id_len = self.id.len();
 
     DumbString::new(self.id.clone()).marshal(&mut w)?;
@@ -3287,9 +3315,9 @@ impl ModelMarshal for Artwork {
     self.is_need_timelapse.marshal(&mut w)?;
     self.tiled_corners.marshal(&mut w)?;
     self.modifiers.marshal(&mut w)?;
-    self.remaining_data.marshal(&mut w)?;
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let file_size = w.len() + Self::HEADER_SIZE;
+    let file_size = w.written_bytes() + Self::HEADER_SIZE;
     Ok(ArtworkHeader {
       file_size: file_size as u64,
       id_len: id_len as u8,
@@ -4605,6 +4633,20 @@ mod tests {
     // the speed multiplier is applied instantly to each frame within the app
     // and is not saved as data of modifier's field.
     assert_eq!(artwork.modifiers.len(), 0);
+  }
+
+  #[test]
+  fn test_marshal_simple_data() {
+    let path = "assets/fixtures/simple.px";
+    let original_file_data = std::fs::read(path).unwrap();
+    let original_file = Artwork::read(&original_file_data).unwrap();
+
+    let mut buf = Vec::new();
+    let result = original_file.write(&mut buf);
+    assert!(result.is_ok());
+
+    let file = Artwork::read(&mut buf);
+    assert!(file.is_ok());
   }
 
   fn get_frame_content_by_indices(artwork: &Artwork, i: usize, j: usize) -> &FrameContent {
