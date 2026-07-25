@@ -979,10 +979,8 @@ impl Tileset {
   /// but each compressed tile contains the raw, consecutive ARGBColor values.
   /// Unlike other `[Type]` values in the format, there is no leading UInt64 count.
   fn compressed_colors(input: &[u8]) -> PPResult<&[u8], Vec<ArgbColor>> {
-    let (input, compressed_len) = le_u64.parse(input)?;
-    let (input, compressed_data) = take(compressed_len as usize)(input)?;
-
-    let mut decoder = ZlibDecoder::new(compressed_data);
+    let (input, compressed_data) = array_type(le_u8).parse(input)?;
+    let mut decoder = ZlibDecoder::new(&compressed_data[..]);
     let mut decompressed_bytes = Vec::new();
     decoder
       .read_to_end(&mut decompressed_bytes)
@@ -1015,21 +1013,14 @@ impl ModelMarshal for Tileset {
     self.tile_size.marshal(&mut w)?;
 
     let mut compressed_colors = Vec::<Vec<u8>>::new();
-
     for image_colors in self.tile_images.iter() {
-      let mut buf = Vec::<u8>::new();
+      let mut color_data = Vec::<u8>::new();
+      TypeN::new(image_colors).marshal(&mut color_data)?;
+
       let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-
-      for color in image_colors.iter() {
-        color.marshal(&mut encoder)?;
-      }
-
+      encoder.write_all(&color_data)?;
       let compressed_color_data = encoder.finish()?;
-      let compressed_color_len = compressed_color_data.len() as u64;
-      compressed_color_len.marshal(&mut buf)?;
-      TypeN::new(&compressed_color_data).marshal(&mut buf)?;
-
-      compressed_colors.push(buf);
+      compressed_colors.push(compressed_color_data);
     }
 
     compressed_colors.marshal(&mut w)?;
@@ -4783,6 +4774,20 @@ mod tests {
   #[test]
   fn test_marshal_tag_data() {
     let path = "assets/fixtures/tag.px";
+    let original_file_data = std::fs::read(path).unwrap();
+    let original_file = Artwork::read(&original_file_data).unwrap();
+
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
+    assert!(result.is_ok());
+
+    let file = Artwork::read(&mut written_file_data);
+    assert!(file.is_ok());
+  }
+
+  #[test]
+  fn test_marshal_tilemap_data() {
+    let path = "assets/fixtures/tilemap.px";
     let original_file_data = std::fs::read(path).unwrap();
     let original_file = Artwork::read(&original_file_data).unwrap();
 
