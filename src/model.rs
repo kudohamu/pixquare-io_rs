@@ -1291,7 +1291,11 @@ impl ModelMarshal for FxPatternOverlaryContent {
 
   fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     self.enabled.marshal(&mut w)?;
-    self.patterns.marshal(&mut w)?;
+
+    let mut pattern_buf = &mut Vec::<u8>::new();
+    TypeN::new(&self.patterns).marshal(&mut pattern_buf)?;
+
+    pattern_buf.marshal(&mut w)?;
     self.pattern_size.marshal(&mut w)?;
     self.opacity.marshal(&mut w)?;
     self.blend_mode.marshal(&mut w)?;
@@ -4666,6 +4670,20 @@ mod tests {
   #[test]
   fn test_marshal_layer_data() {
     let path = "assets/fixtures/layer.px";
+    let original_file_data = std::fs::read(path).unwrap();
+    let original_file = Artwork::read(&original_file_data).unwrap();
+
+    let mut buf = Vec::new();
+    let result = original_file.write(&mut buf);
+    assert!(result.is_ok());
+
+    let file = Artwork::read(&mut buf);
+    assert!(file.is_ok());
+  }
+
+  #[test]
+  fn test_marshal_layer_fx_data() {
+    let path = "assets/fixtures/layer-fx.px";
     let original_file_data = std::fs::read(path).unwrap();
     let original_file = Artwork::read(&original_file_data).unwrap();
 
