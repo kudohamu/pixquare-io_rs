@@ -742,6 +742,7 @@ impl ModelMarshal for Tag {
     self.color.marshal(&mut w)?;
     self.direction.marshal(&mut w)?;
     self.loop_count.marshal(&mut w)?;
+    self.enabled.marshal(&mut w)?;
     TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
     let data_size = w.written_bytes();
@@ -4768,6 +4769,20 @@ mod tests {
   #[test]
   fn test_marshal_symmetry_line_data() {
     let path = "assets/fixtures/symmetry_line.px";
+    let original_file_data = std::fs::read(path).unwrap();
+    let original_file = Artwork::read(&original_file_data).unwrap();
+
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
+    assert!(result.is_ok());
+
+    let file = Artwork::read(&mut written_file_data);
+    assert!(file.is_ok());
+  }
+
+  #[test]
+  fn test_marshal_tag_data() {
+    let path = "assets/fixtures/tag.px";
     let original_file_data = std::fs::read(path).unwrap();
     let original_file = Artwork::read(&original_file_data).unwrap();
 
