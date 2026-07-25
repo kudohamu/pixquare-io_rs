@@ -4645,11 +4645,11 @@ mod tests {
     let original_file_data = std::fs::read(path).unwrap();
     let original_file = Artwork::read(&original_file_data).unwrap();
 
-    let mut buf = Vec::new();
-    let result = original_file.write(&mut buf);
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut buf);
+    let file = Artwork::read(&mut written_file_data);
     assert!(file.is_ok());
   }
 
@@ -4659,11 +4659,11 @@ mod tests {
     let original_file_data = std::fs::read(path).unwrap();
     let original_file = Artwork::read(&original_file_data).unwrap();
 
-    let mut buf = Vec::new();
-    let result = original_file.write(&mut buf);
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut buf);
+    let file = Artwork::read(&mut written_file_data);
     assert!(file.is_ok());
   }
 
@@ -4673,11 +4673,11 @@ mod tests {
     let original_file_data = std::fs::read(path).unwrap();
     let original_file = Artwork::read(&original_file_data).unwrap();
 
-    let mut buf = Vec::new();
-    let result = original_file.write(&mut buf);
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut buf);
+    let file = Artwork::read(&mut written_file_data);
     assert!(file.is_ok());
   }
 
@@ -4687,11 +4687,11 @@ mod tests {
     let original_file_data = std::fs::read(path).unwrap();
     let original_file = Artwork::read(&original_file_data).unwrap();
 
-    let mut buf = Vec::new();
-    let result = original_file.write(&mut buf);
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut buf);
+    let file = Artwork::read(&mut written_file_data);
     assert!(file.is_ok());
   }
 
@@ -4701,11 +4701,11 @@ mod tests {
     let original_file_data = std::fs::read(path).unwrap();
     let original_file = Artwork::read(&original_file_data).unwrap();
 
-    let mut buf = Vec::new();
-    let result = original_file.write(&mut buf);
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut buf);
+    let file = Artwork::read(&mut written_file_data);
     assert!(file.is_ok());
   }
 
@@ -4715,11 +4715,25 @@ mod tests {
     let original_file_data = std::fs::read(path).unwrap();
     let original_file = Artwork::read(&original_file_data).unwrap();
 
-    let mut buf = Vec::new();
-    let result = original_file.write(&mut buf);
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut buf);
+    let file = Artwork::read(&mut written_file_data);
+    assert!(file.is_ok());
+  }
+
+  #[test]
+  fn test_marshal_palette_anywhere_data() {
+    let path = "assets/fixtures/palette-anywhere.px";
+    let original_file_data = std::fs::read(path).unwrap();
+    let original_file = Artwork::read(&original_file_data).unwrap();
+
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
+    assert!(result.is_ok());
+
+    let file = Artwork::read(&mut written_file_data);
     assert!(file.is_ok());
   }
 
