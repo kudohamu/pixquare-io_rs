@@ -4841,6 +4841,48 @@ mod tests {
     assert!(file.is_ok());
   }
 
+  #[test]
+  fn test_marshal_guideline_grid_data() {
+    let path = "assets/fixtures/guideline-grid.px";
+    let original_file_data = std::fs::read(path).unwrap();
+    let original_file = Artwork::read(&original_file_data).unwrap();
+
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
+    assert!(result.is_ok());
+
+    let file = Artwork::read(&mut written_file_data);
+    assert!(file.is_ok());
+  }
+
+  #[test]
+  fn test_marshal_guideline_isometric_data() {
+    let path = "assets/fixtures/guideline-isometric.px";
+    let original_file_data = std::fs::read(path).unwrap();
+    let original_file = Artwork::read(&original_file_data).unwrap();
+
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
+    assert!(result.is_ok());
+
+    let file = Artwork::read(&mut written_file_data);
+    assert!(file.is_ok());
+  }
+
+  #[test]
+  fn test_marshal_guideline_perspective_data() {
+    let path = "assets/fixtures/guideline-perspective.px";
+    let original_file_data = std::fs::read(path).unwrap();
+    let original_file = Artwork::read(&original_file_data).unwrap();
+
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
+    assert!(result.is_ok());
+
+    let file = Artwork::read(&mut written_file_data);
+    assert!(file.is_ok());
+  }
+
   fn get_frame_content_by_indices(artwork: &Artwork, i: usize, j: usize) -> &FrameContent {
     let frame_content_id = &artwork.layers[i].frames[j].content_id;
 
