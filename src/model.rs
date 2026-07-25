@@ -4649,6 +4649,20 @@ mod tests {
     assert!(file.is_ok());
   }
 
+  #[test]
+  fn test_marshal_group_data() {
+    let path = "assets/fixtures/group.px";
+    let original_file_data = std::fs::read(path).unwrap();
+    let original_file = Artwork::read(&original_file_data).unwrap();
+
+    let mut buf = Vec::new();
+    let result = original_file.write(&mut buf);
+    assert!(result.is_ok());
+
+    let file = Artwork::read(&mut buf);
+    assert!(file.is_ok());
+  }
+
   fn get_frame_content_by_indices(artwork: &Artwork, i: usize, j: usize) -> &FrameContent {
     let frame_content_id = &artwork.layers[i].frames[j].content_id;
 
