@@ -4702,6 +4702,20 @@ mod tests {
   }
 
   #[test]
+  fn test_marshal_frame_content_data() {
+    let path = "assets/fixtures/frame_content.px";
+    let original_file_data = std::fs::read(path).unwrap();
+    let original_file = Artwork::read(&original_file_data).unwrap();
+
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
+    assert!(result.is_ok());
+
+    let file = Artwork::read(&mut written_file_data);
+    assert!(file.is_ok());
+  }
+
+  #[test]
   fn test_marshal_palette_data() {
     let path = "assets/fixtures/palette.px";
     let original_file_data = std::fs::read(path).unwrap();
