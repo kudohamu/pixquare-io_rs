@@ -4646,6 +4646,20 @@ mod tests {
   }
 
   #[test]
+  fn test_marshal_entry_data() {
+    let path = "assets/fixtures/entry.px";
+    let original_file_data = std::fs::read(path).unwrap();
+    let original_file = Artwork::read(&original_file_data).unwrap();
+
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
+    assert!(result.is_ok());
+
+    let file = Artwork::read(&mut written_file_data);
+    assert!(file.is_ok());
+  }
+
+  #[test]
   fn test_marshal_group_data() {
     let path = "assets/fixtures/group.px";
     let original_file_data = std::fs::read(path).unwrap();
