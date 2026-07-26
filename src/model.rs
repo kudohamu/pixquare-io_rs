@@ -3324,7 +3324,7 @@ impl ModelMarshal for Artwork {
     self.modifiers.marshal(&mut w)?;
     TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
-    let file_size = w.written_bytes() + Self::HEADER_SIZE;
+    let file_size = w.written_bytes();
     Ok(ArtworkHeader {
       file_size: file_size as u64,
       id_len: id_len as u8,
