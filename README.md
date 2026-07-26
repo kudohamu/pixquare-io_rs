@@ -26,9 +26,11 @@ println!("{:?}", file);
 
 ## Writing data to a file
 
-⚠️ **CAUTION**
-pixquare-io **DOES NOT** automatically manage data consistency across fields. (For example, if you directly change a Layer's ID but do not update the corresponding Entry's ID.)
-Be sure to thoroughly familiarize yourself with [the official binary specs](https://docs.pixquare.art/pixquare-file/binary-specs) before using this crate, such as when overwriting existing .px files.
+⚠️ **CAUTION** ⚠️
+
+pixquare-io **DOES NOT** automatically manage data consistency across fields.  
+(For example, if you directly change a Layer's ID but do not update the corresponding Entry's ID.)  
+Be sure to thoroughly familiarize yourself with [the official binary specs](https://docs.pixquare.art/pixquare-file/binary-specs) before using this crate, such as when overwriting existing .px files.  
 I assume no responsibility for any issues that may arise from using this crate.
 
 ```rust
