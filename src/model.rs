@@ -3801,6 +3801,21 @@ mod tests {
   }
 
   #[test]
+  fn test_parse_frame_custom_data() {
+    let path = "assets/fixtures/custom_data.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    let CustomData::String(content) = &artwork.layers[0].frames[0].custom_datas[0];
+    assert_eq!(content.content, "foo");
+    let CustomData::String(content) = &artwork.layers[0].frames[1].custom_datas[0];
+    assert_eq!(content.content, "bar");
+  }
+
+  #[test]
   fn test_parse_frame_content_data() {
     let path = "assets/fixtures/frame_content.px";
     let file_data = std::fs::read(path).unwrap();
@@ -4704,6 +4719,20 @@ mod tests {
   #[test]
   fn test_marshal_layer_frame_data() {
     let path = "assets/fixtures/layer-frame.px";
+    let original_file_data = std::fs::read(path).unwrap();
+    let original_file = Artwork::read(&original_file_data).unwrap();
+
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
+    assert!(result.is_ok());
+
+    let file = Artwork::read(&mut written_file_data);
+    assert!(file.is_ok());
+  }
+
+  #[test]
+  fn test_marshal_frame_custom_data() {
+    let path = "assets/fixtures/custom_data.px";
     let original_file_data = std::fs::read(path).unwrap();
     let original_file = Artwork::read(&original_file_data).unwrap();
 
