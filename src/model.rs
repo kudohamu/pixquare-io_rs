@@ -1,6 +1,6 @@
-use std::io::{Read, Write};
+use std::io::{BufReader, Read, Write};
 
-use flate2::{Compression, read::ZlibDecoder, write::ZlibEncoder};
+use flate2::{Compression, bufread::DeflateEncoder, read::DeflateDecoder};
 use half::f16;
 use nom::{
   Parser,
@@ -26,6 +26,8 @@ use crate::{
   primitive_type::{DumbString, OptionSet, TypeN},
   writer::{CountingWrite, CountingWriter},
 };
+
+const ZLIB_DEFAULT_HEADER: [u8; 2] = [0x78, 0x9C];
 
 trait ModelMarshal {
   type Header: Marshal;
@@ -252,13 +254,19 @@ impl ModelMarshal for FrameContent {
     let id_len = self.id.len();
     let color_len = self.colors.len() * 4;
 
-    // encode colors
-    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-
+    let mut color_buf = Vec::new();
     for color in self.colors.iter() {
-      color.marshal(&mut encoder)?;
+      color.marshal(&mut color_buf)?;
     }
-    let compressed_color_data = encoder.finish()?;
+    // encode colors
+    let reader = BufReader::new(&color_buf[..]);
+    let mut encoder = DeflateEncoder::new(reader, Compression::best());
+
+    // Swift's standard zlib library uses the “Header + Deflate” encoding format,
+    // which does not include an Adler-32 checksum.
+    // Therefore, I manually add zlib's default header to the Deflate-encoded data.
+    let mut compressed_color_data = ZLIB_DEFAULT_HEADER.to_vec();
+    encoder.read_to_end(&mut compressed_color_data)?;
     let compressed_color_len = compressed_color_data.len();
 
     DumbString::new(self.id.clone()).marshal(&mut w)?;
@@ -980,7 +988,7 @@ impl Tileset {
   /// Unlike other `[Type]` values in the format, there is no leading UInt64 count.
   fn compressed_colors(input: &[u8]) -> PPResult<&[u8], Vec<ArgbColor>> {
     let (input, compressed_data) = array_type(le_u8).parse(input)?;
-    let mut decoder = ZlibDecoder::new(&compressed_data[..]);
+    let mut decoder = DeflateDecoder::new(&compressed_data[2..]);
     let mut decompressed_bytes = Vec::new();
     decoder
       .read_to_end(&mut decompressed_bytes)
@@ -1017,9 +1025,12 @@ impl ModelMarshal for Tileset {
       let mut color_data = Vec::<u8>::new();
       TypeN::new(image_colors).marshal(&mut color_data)?;
 
-      let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-      encoder.write_all(&color_data)?;
-      let compressed_color_data = encoder.finish()?;
+      let mut encoder = DeflateEncoder::new(&color_data[..], Compression::best());
+      // Swift's standard zlib library uses the “Header + Deflate” encoding format,
+      // which does not include an Adler-32 checksum.
+      // Therefore, I manually add zlib's default header to the Deflate-encoded data.
+      let mut compressed_color_data = ZLIB_DEFAULT_HEADER.to_vec();
+      encoder.read_to_end(&mut compressed_color_data)?;
       compressed_colors.push(compressed_color_data);
     }
 
@@ -3981,6 +3992,8 @@ mod tests {
 
     // check for unspecified data in binary-spec.
     assert!(artwork.frame_contents[0].remaining_data.is_empty());
+    assert!(artwork.frame_contents[1].remaining_data.is_empty());
+    assert!(artwork.frame_contents[2].remaining_data.is_empty());
   }
 
   #[test]

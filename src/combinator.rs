@@ -1,6 +1,6 @@
 use std::{io::Read, str::from_utf8};
 
-use flate2::read::ZlibDecoder;
+use flate2::read::DeflateDecoder;
 use half::f16;
 use nom::{
   Parser,
@@ -114,7 +114,7 @@ pub fn compressed_colors<'a>(
   move |input: &'a [u8]| {
     let (remaining_input, compressed_data) = take(compressed_len)(input)?;
 
-    let mut decoder = ZlibDecoder::new(compressed_data);
+    let mut decoder = DeflateDecoder::new(&compressed_data[2..]);
     let mut decompressed_bytes = Vec::new();
     decoder
       .read_to_end(&mut decompressed_bytes)
