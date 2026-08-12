@@ -9,4 +9,5 @@ name = "pixquare"
 [dependencies]
 flate2 = { version = "1.1.9", features = ["zlib-rs"], default-features = false }
 half = "2.7.1"
+msgw3c = { path = "../msgw3c" }
 nom = "8.0.0"

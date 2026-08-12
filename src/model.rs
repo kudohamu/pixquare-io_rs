@@ -2,6 +2,7 @@ use std::io::{BufReader, Read, Write};
 
 use flate2::{Compression, bufread::DeflateEncoder, read::DeflateDecoder};
 use half::f16;
+use msgw3c::batch_normal;
 use nom::{
   Parser,
   bytes::complete::take,
@@ -21,7 +22,7 @@ use crate::{
     FlipAxes, FxType, GuideLineType, ModifierType, PaletteOrganizationType, ProcessorType, Rect,
     Size, SymmetryType,
   },
-  error::{MarshalError, PMResult, PPResult, ParseError},
+  error::{ArtworkOperationError, MarshalError, PMResult, PPResult, ParseError},
   marshaler::Marshal,
   primitive_type::{DumbString, OptionSet, TypeN},
   writer::{CountingWrite, CountingWriter},
@@ -227,6 +228,16 @@ pub struct FrameContent {
 }
 
 impl FrameContent {
+  pub fn composite_content_onto(
+    &self,
+    backdrop: &[ArgbColor],
+  ) -> Result<Vec<ArgbColor>, ArtworkOperationError> {
+    let mut target = vec![ArgbColor::TRANSPARENT; self.colors.len()];
+    batch_normal(&self.colors, &backdrop, &mut target)?;
+
+    Ok(target.into())
+  }
+
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = FrameContentHeader::parse(input)?;
     let (rest, input) = take(header.data_size as usize).parse(input)?;
@@ -3195,6 +3206,84 @@ impl<'a> Artwork {
     Ok(())
   }
 
+  /// Returns the image data for a specific frame.
+  pub fn get_frame_image(&self, frame_index: usize) -> Result<Vec<u8>, ArtworkOperationError> {
+    let mut frames = Vec::<&Frame>::new();
+    let layers = self.get_ordered_layers(None);
+
+    for layer in layers {
+      let frame = layer.frames.get(frame_index).ok_or_else(|| {
+        ArtworkOperationError::ArrayIndexOutOfBounds((frame_index, layer.frames.len()))
+      })?;
+      frames.push(frame);
+    }
+    // stable sort by z_index
+    frames.sort_by(|a, b| a.z_index.cmp(&b.z_index));
+
+    let mut frame_contents = Vec::<&FrameContent>::new();
+    for frame in frames {
+      if let Some(frame_content) = self
+        .frame_contents
+        .iter()
+        .find(|c| c.id == frame.content_id)
+      {
+        frame_contents.push(frame_content);
+      }
+    }
+
+    let data_size = (self.canvas_size.width as usize) * (self.canvas_size.height as usize) * 4;
+    let mut buf: Vec<u8> = vec![0b0; data_size];
+
+    // for frame_content in frame_contents {
+    //   frame_content.render_content(&mut buf)?;
+    // }
+    let composited = frame_contents
+      .iter()
+      .fold(vec![ArgbColor::TRANSPARENT; data_size], |backdrop, src| {
+        src.composite_content_onto(&backdrop[..]).unwrap()
+      });
+
+    for (i, color) in composited.iter().enumerate() {
+      buf[i * 4] = color.r;
+      buf[i * 4 + 1] = color.g;
+      buf[i * 4 + 2] = color.b;
+      buf[i * 4 + 3] = color.a;
+    }
+
+    return Ok(buf);
+  }
+
+  fn get_ordered_layers(&self, entries: Option<&Vec<Entry>>) -> Vec<&Layer> {
+    let Some(entries) = entries else {
+      return self.get_ordered_layers(Some(&self.entries));
+    };
+
+    let mut layers = Vec::new();
+
+    for entry in entries {
+      match entry.entry_type {
+        EntryType::RegularLayer => {
+          if let Some(layer) = self.layers.iter().find(|l| l.id == entry.id) {
+            layers.push(layer);
+          };
+        }
+        EntryType::Group => {
+          if let Some(group) = self.groups.iter().find(|g| g.id == entry.id) {
+            let mut child_layers = self.get_ordered_layers(Some(&group.child_entries));
+
+            layers.append(&mut child_layers);
+          }
+        }
+        EntryType::TilemapLayer => {
+          // TODO
+        }
+        EntryType::ReferenceLayer => (),
+      }
+    }
+
+    return layers;
+  }
+
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = ArtworkHeader::parse(input)?;
 
@@ -4008,10 +4097,7 @@ mod tests {
     assert_eq!(artwork.palette.len(), 4);
     assert_eq!(artwork.palette[0], ArgbColor::new(0, 0, 0, 255));
     assert_eq!(artwork.palette[1], ArgbColor::new(255, 255, 255, 255));
-    assert_eq!(
-      artwork.palette[2],
-      ArgbColor::post_multiply(20, 160, 46, 179)
-    );
+    assert_eq!(artwork.palette[2], ArgbColor::new(14, 112, 32, 179));
     assert_eq!(artwork.palette[3], ArgbColor::new(255, 0, 0, 255));
     assert_eq!(artwork.palette_organization, PaletteOrganization::Packed);
   }
@@ -4458,7 +4544,7 @@ mod tests {
     );
     assert_eq!(
       artwork.canvas_grid.second_color,
-      ArgbColor::post_multiply(0, 0, 255, 191)
+      ArgbColor::new(0, 0, 191, 191)
     );
   }
 

@@ -1,5 +1,7 @@
 use std::io::Write;
 
+use msgw3c::Blend;
+
 use crate::{
   error::{PMResult, ParseError},
   marshaler::Marshal,
@@ -70,12 +72,19 @@ pub struct ArgbColor {
 }
 
 impl ArgbColor {
+  pub const TRANSPARENT: Self = Self {
+    r: 0,
+    g: 0,
+    b: 0,
+    a: 0,
+  };
+
   pub fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
     Self { r, g, b, a }
   }
 
-  pub fn post_multiply(r: u8, g: u8, b: u8, a: u8) -> Self {
-    let alpha_ratio = (a as f32) / (255 as f32);
+  pub fn from_straight_alpha(r: u8, g: u8, b: u8, a: u8) -> Self {
+    let alpha_ratio = (a as f32) / 255.;
 
     Self {
       r: ((r as f32) * alpha_ratio) as u8,
@@ -109,6 +118,26 @@ impl TryFrom<&[u8]> for ArgbColor {
       b: *b,
       a: *a,
     })
+  }
+}
+
+impl Blend for ArgbColor {
+  fn from_color(c: msgw3c::color::C) -> Self {
+    Self::from_straight_alpha(
+      (c.r * 255.).clamp(0.0, 255.0) as u8,
+      (c.g * 255.).clamp(0.0, 255.0) as u8,
+      (c.b * 255.).clamp(0.0, 255.0) as u8,
+      (c.a * 255.).clamp(0.0, 255.0) as u8,
+    )
+  }
+
+  fn to_color(&self) -> msgw3c::color::C {
+    msgw3c::color::C {
+      r: self.r as f32 / 255.,
+      g: self.g as f32 / 255.,
+      b: self.b as f32 / 255.,
+      a: self.a as f32 / 255.,
+    }
   }
 }
 

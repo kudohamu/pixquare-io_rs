@@ -139,3 +139,46 @@ impl std::error::Error for MarshalError {
 }
 
 pub type PMResult<I = ()> = Result<I, MarshalError>;
+
+/// Represent error operating the Artwork.
+#[derive(Debug)]
+pub enum ArtworkOperationError {
+  ArrayIndexOutOfBounds((usize, usize)),
+  InsufficientBufferSize,
+  Msgw3c(msgw3c::error::Error),
+}
+
+impl Display for ArtworkOperationError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::ArrayIndexOutOfBounds((actual, len)) => {
+        write!(
+          f,
+          "array index `{}` is out of bounds for length `{}`",
+          actual, len
+        )
+      }
+      Self::InsufficientBufferSize => {
+        write!(f, "the buffer size is insufficient for the image size")
+      }
+      Self::Msgw3c(err) => {
+        write!(f, "blending error: {}", err)
+      }
+    }
+  }
+}
+
+impl std::error::Error for ArtworkOperationError {
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    match self {
+      Self::Msgw3c(err) => Some(err),
+      _ => None,
+    }
+  }
+}
+
+impl From<msgw3c::error::Error> for ArtworkOperationError {
+  fn from(err: msgw3c::error::Error) -> Self {
+    Self::Msgw3c(err)
+  }
+}
