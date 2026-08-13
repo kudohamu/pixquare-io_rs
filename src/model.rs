@@ -2,7 +2,7 @@ use std::io::{BufReader, Read, Write};
 
 use flate2::{Compression, bufread::DeflateEncoder, read::DeflateDecoder};
 use half::f16;
-use msgw3c::batch_normal;
+use msgw3c::{batch_blend_with, batch_multiply, batch_normal, composite::PorterDuff};
 use nom::{
   Parser,
   bytes::complete::take,
@@ -25,6 +25,7 @@ use crate::{
   error::{ArtworkOperationError, MarshalError, PMResult, PPResult, ParseError},
   marshaler::Marshal,
   primitive_type::{DumbString, OptionSet, TypeN},
+  utility_type::{LayerVisibility, Layerable, RenderFrameData},
   writer::{CountingWrite, CountingWriter},
 };
 
@@ -231,9 +232,17 @@ impl FrameContent {
   pub fn composite_content_onto(
     &self,
     backdrop: &[ArgbColor],
+    blend_mode: BlendMode,
   ) -> Result<Vec<ArgbColor>, ArtworkOperationError> {
     let mut target = vec![ArgbColor::TRANSPARENT; self.colors.len()];
-    batch_normal(&self.colors, &backdrop, &mut target)?;
+
+    batch_blend_with(
+      &self.colors,
+      &backdrop,
+      &mut target,
+      blend_mode.into(),
+      PorterDuff::SourceOver,
+    )?;
 
     Ok(target.into())
   }
@@ -3207,43 +3216,88 @@ impl<'a> Artwork {
   }
 
   /// Returns the image data for a specific frame.
-  pub fn get_frame_image(&self, frame_index: usize) -> Result<Vec<u8>, ArtworkOperationError> {
-    let mut frames = Vec::<&Frame>::new();
+  pub fn get_frame_image(
+    &self,
+    frame_index: usize,
+    visibility: LayerVisibility,
+  ) -> Result<Vec<u8>, ArtworkOperationError> {
+    let mut frame_datas = Vec::<RenderFrameData>::new();
     let layers = self.get_ordered_layers(None);
 
     for layer in layers {
-      let frame = layer.frames.get(frame_index).ok_or_else(|| {
-        ArtworkOperationError::ArrayIndexOutOfBounds((frame_index, layer.frames.len()))
-      })?;
-      frames.push(frame);
-    }
-    // stable sort by z_index
-    frames.sort_by(|a, b| a.z_index.cmp(&b.z_index));
+      match layer {
+        Layerable::RegularLayer(layer) => {
+          if visibility == LayerVisibility::Visible && !layer.visible {
+            continue;
+          }
 
-    let mut frame_contents = Vec::<&FrameContent>::new();
-    for frame in frames {
-      if let Some(frame_content) = self
-        .frame_contents
-        .iter()
-        .find(|c| c.id == frame.content_id)
-      {
-        frame_contents.push(frame_content);
+          let frame = layer.frames.get(frame_index).ok_or_else(|| {
+            ArtworkOperationError::ArrayIndexOutOfBounds((frame_index, layer.frames.len()))
+          })?;
+          let frame_data = RenderFrameData {
+            entry_type: EntryType::RegularLayer,
+            frame: frame.clone(),
+            blend_mode: layer.blend_mode,
+          };
+          frame_datas.push(frame_data);
+        }
+        Layerable::TilemapLayer(layer) => {
+          if visibility == LayerVisibility::Visible && !layer.visible {
+            continue;
+          }
+
+          let frame = layer.frames.get(frame_index).ok_or_else(|| {
+            ArtworkOperationError::ArrayIndexOutOfBounds((frame_index, layer.frames.len()))
+          })?;
+          let frame_data = RenderFrameData {
+            entry_type: EntryType::TilemapLayer,
+            frame: frame.clone(),
+            blend_mode: layer.blend_mode,
+          };
+          frame_datas.push(frame_data);
+        }
       }
     }
+    // stable sort by z_index
+    frame_datas.sort_by(|a, b| a.frame.z_index.cmp(&b.frame.z_index));
 
     let data_size = (self.canvas_size.width as usize) * (self.canvas_size.height as usize) * 4;
+    let mut composited_image = vec![ArgbColor::TRANSPARENT; data_size];
+
+    for data in frame_datas {
+      match data.entry_type {
+        EntryType::RegularLayer => {
+          let content = self
+            .frame_contents
+            .iter()
+            .find(|c| c.id == data.frame.content_id);
+
+          let Some(content) = content else {
+            continue;
+          };
+
+          composited_image =
+            content.composite_content_onto(&mut composited_image[..], data.blend_mode)?;
+        }
+        EntryType::TilemapLayer => {
+          let content = self
+            .frame_contents
+            .iter()
+            .find(|c| c.id == data.frame.content_id);
+
+          let Some(content) = content else {
+            continue;
+          };
+
+          composited_image =
+            content.composite_content_onto(&mut composited_image[..], data.blend_mode)?;
+        }
+        _ => (),
+      };
+    }
+
     let mut buf: Vec<u8> = vec![0b0; data_size];
-
-    // for frame_content in frame_contents {
-    //   frame_content.render_content(&mut buf)?;
-    // }
-    let composited = frame_contents
-      .iter()
-      .fold(vec![ArgbColor::TRANSPARENT; data_size], |backdrop, src| {
-        src.composite_content_onto(&backdrop[..]).unwrap()
-      });
-
-    for (i, color) in composited.iter().enumerate() {
+    for (i, color) in composited_image.iter().enumerate() {
       buf[i * 4] = color.r;
       buf[i * 4 + 1] = color.g;
       buf[i * 4 + 2] = color.b;
@@ -3253,7 +3307,7 @@ impl<'a> Artwork {
     return Ok(buf);
   }
 
-  fn get_ordered_layers(&self, entries: Option<&Vec<Entry>>) -> Vec<&Layer> {
+  fn get_ordered_layers(&self, entries: Option<&Vec<Entry>>) -> Vec<Layerable<'_>> {
     let Some(entries) = entries else {
       return self.get_ordered_layers(Some(&self.entries));
     };
@@ -3264,7 +3318,7 @@ impl<'a> Artwork {
       match entry.entry_type {
         EntryType::RegularLayer => {
           if let Some(layer) = self.layers.iter().find(|l| l.id == entry.id) {
-            layers.push(layer);
+            layers.push(Layerable::RegularLayer(layer));
           };
         }
         EntryType::Group => {
@@ -3275,7 +3329,9 @@ impl<'a> Artwork {
           }
         }
         EntryType::TilemapLayer => {
-          // TODO
+          if let Some(layer) = self.tilemap_layers.iter().find(|l| l.id == entry.id) {
+            layers.push(Layerable::TilemapLayer(layer));
+          };
         }
         EntryType::ReferenceLayer => (),
       }

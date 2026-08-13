@@ -270,6 +270,29 @@ impl Marshal for BlendMode {
   }
 }
 
+impl From<BlendMode> for msgw3c::blend::BlendMode {
+  fn from(value: BlendMode) -> Self {
+    match value {
+      BlendMode::Normal => msgw3c::blend::BlendMode::Normal,
+      BlendMode::Multiply => msgw3c::blend::BlendMode::Multiply,
+      BlendMode::Screen => msgw3c::blend::BlendMode::Screen,
+      BlendMode::Overlay => msgw3c::blend::BlendMode::Overlay,
+      BlendMode::Darken => msgw3c::blend::BlendMode::Darken,
+      BlendMode::Lighten => msgw3c::blend::BlendMode::Lighten,
+      BlendMode::ColorDodge => msgw3c::blend::BlendMode::ColorDodge,
+      BlendMode::ColorBurn => msgw3c::blend::BlendMode::ColorBurn,
+      BlendMode::HardLight => msgw3c::blend::BlendMode::HardLight,
+      BlendMode::SoftLight => msgw3c::blend::BlendMode::SoftLight,
+      BlendMode::Difference => msgw3c::blend::BlendMode::Difference,
+      BlendMode::Exclusion => msgw3c::blend::BlendMode::Exclusion,
+      BlendMode::Hue => msgw3c::blend::BlendMode::Hue,
+      BlendMode::Saturation => msgw3c::blend::BlendMode::Saturation,
+      BlendMode::Color => msgw3c::blend::BlendMode::Color,
+      BlendMode::Luminosity => msgw3c::blend::BlendMode::Luminosity,
+    }
+  }
+}
+
 /// Type of custom data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CustomDataType {
