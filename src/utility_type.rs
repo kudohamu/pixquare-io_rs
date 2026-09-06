@@ -1,12 +1,24 @@
 use crate::{
-  composite_type::{BlendMode, EntryType},
+  composite_type::BlendMode,
   model::{Frame, Layer, TilemapLayer},
 };
 
 #[derive(Debug, Clone)]
-pub(crate) struct RenderFrameData {
-  pub entry_type: EntryType,
+pub(crate) enum RenderFrameData {
+  RegularLayer(RenderFrameDataRegularLayer),
+  TilemapLayer(RenderFrameDataTilemapLayer),
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RenderFrameDataRegularLayer {
   pub frame: Frame,
+  pub blend_mode: BlendMode,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RenderFrameDataTilemapLayer {
+  pub frame: Frame,
+  pub tileset_id: String,
   pub blend_mode: BlendMode,
 }
 

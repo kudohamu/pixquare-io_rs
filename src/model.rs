@@ -25,7 +25,10 @@ use crate::{
   error::{ArtworkOperationError, MarshalError, PMResult, PPResult, ParseError},
   marshaler::Marshal,
   primitive_type::{DumbString, OptionSet, TypeN},
-  utility_type::{LayerVisibility, Layerable, RenderFrameData},
+  utility_type::{
+    LayerVisibility, Layerable, RenderFrameData, RenderFrameDataRegularLayer,
+    RenderFrameDataTilemapLayer,
+  },
   writer::{CountingWrite, CountingWriter},
 };
 
@@ -229,6 +232,7 @@ pub struct FrameContent {
 }
 
 impl FrameContent {
+  /// Returns the image data composited backdrop and frame data.
   pub fn composite_content_onto(
     &self,
     backdrop: &[ArgbColor],
@@ -349,6 +353,48 @@ impl TilemapFrameContent {
   /// <https://docs.pixquare.art/pixquare-file/binary-specs?q=user+data#content-2>
   pub fn unassigned_tile() -> u16 {
     u16::MAX
+  }
+
+  /// Returns whether the tile is unassigned.
+  pub fn is_unassigned_tile(tile_index: u16) -> bool {
+    tile_index == Self::unassigned_tile()
+  }
+
+  /// Returns the image data composited backdrop and tilemap frame data.
+  pub fn composite_content_onto(
+    &self,
+    tileset: &Tileset,
+    backdrop: &[ArgbColor],
+    blend_mode: BlendMode,
+  ) -> Result<Vec<ArgbColor>, ArtworkOperationError> {
+    let pixel_len = (self.tile_size.width * self.tile_size.height) as usize * self.tiles.len();
+    let mut target = vec![ArgbColor::TRANSPARENT; pixel_len];
+    let mut frame_data = vec![ArgbColor::TRANSPARENT; pixel_len];
+
+    for grid_index in 0..self.tiles.len() {
+      let tile_index = self.tiles[grid_index];
+
+      if Self::is_unassigned_tile(tile_index) {
+        continue;
+      }
+
+      let start_index = grid_index as usize * self.tile_size.width as usize;
+      let tile_data = &tileset.tile_images[tile_index as usize];
+
+      for pixel_index in 0..tile_data.len() {
+        frame_data[start_index + pixel_index] = tile_data[pixel_index];
+      }
+    }
+
+    batch_blend_with(
+      &frame_data,
+      &backdrop,
+      &mut target,
+      blend_mode.into(),
+      PorterDuff::SourceOver,
+    )?;
+
+    Ok(target.into())
   }
 
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
@@ -3238,12 +3284,11 @@ impl<'a> Artwork {
           let frame = layer.frames.get(frame_index).ok_or_else(|| {
             ArtworkOperationError::ArrayIndexOutOfBounds((frame_index, layer.frames.len()))
           })?;
-          let frame_data = RenderFrameData {
-            entry_type: EntryType::RegularLayer,
+          let frame_data = RenderFrameDataRegularLayer {
             frame: frame.clone(),
             blend_mode: layer.blend_mode,
           };
-          frame_datas.push(frame_data);
+          frame_datas.push(RenderFrameData::RegularLayer(frame_data));
         }
         Layerable::TilemapLayer(layer) => {
           if visibility == LayerVisibility::Visible && !layer.visible {
@@ -3253,24 +3298,35 @@ impl<'a> Artwork {
           let frame = layer.frames.get(frame_index).ok_or_else(|| {
             ArtworkOperationError::ArrayIndexOutOfBounds((frame_index, layer.frames.len()))
           })?;
-          let frame_data = RenderFrameData {
-            entry_type: EntryType::TilemapLayer,
+          let frame_data = RenderFrameDataTilemapLayer {
             frame: frame.clone(),
+            tileset_id: layer.tileset_id.clone(),
             blend_mode: layer.blend_mode,
           };
-          frame_datas.push(frame_data);
+          frame_datas.push(RenderFrameData::TilemapLayer(frame_data));
         }
       }
     }
     // stable sort by z_index
-    frame_datas.sort_by(|a, b| a.frame.z_index.cmp(&b.frame.z_index));
+    frame_datas.sort_by(|a, b| {
+      let z_index_a = match a {
+        RenderFrameData::RegularLayer(data) => data.frame.z_index,
+        RenderFrameData::TilemapLayer(data) => data.frame.z_index,
+      };
+      let z_index_b = match b {
+        RenderFrameData::RegularLayer(data) => data.frame.z_index,
+        RenderFrameData::TilemapLayer(data) => data.frame.z_index,
+      };
+
+      z_index_a.cmp(&z_index_b)
+    });
 
     let data_size = (self.canvas_size.width as usize) * (self.canvas_size.height as usize) * 4;
     let mut composited_image = vec![ArgbColor::TRANSPARENT; data_size];
 
-    for data in frame_datas {
-      match data.entry_type {
-        EntryType::RegularLayer => {
+    for frame_data in frame_datas {
+      match frame_data {
+        RenderFrameData::RegularLayer(data) => {
           let content = self
             .frame_contents
             .iter()
@@ -3283,20 +3339,25 @@ impl<'a> Artwork {
           composited_image =
             content.composite_content_onto(&mut composited_image[..], data.blend_mode)?;
         }
-        EntryType::TilemapLayer => {
+        RenderFrameData::TilemapLayer(data) => {
           let content = self
-            .frame_contents
+            .tilemap_frame_contents
             .iter()
             .find(|c| c.id == data.frame.content_id);
-
           let Some(content) = content else {
+            continue;
+          };
+          let Some(tileset) = self
+            .tilesets
+            .iter()
+            .find(|tileset| tileset.id == data.tileset_id)
+          else {
             continue;
           };
 
           composited_image =
-            content.composite_content_onto(&mut composited_image[..], data.blend_mode)?;
+            content.composite_content_onto(tileset, &mut composited_image[..], data.blend_mode)?;
         }
-        _ => (),
       };
     }
 
