@@ -35,8 +35,8 @@ pub enum ParseError<I> {
   InvalidSymmetryLine,
   /// Invalid UTF-8 binary.
   InvalidUtf8Error(Utf8Error),
-  /// Failed to decompress zlib data.
-  DecompressZlibError,
+  /// Invalid length or format zlib data.
+  InvalidZlibData,
   Nom(I, ErrorKind),
 }
 
@@ -58,7 +58,7 @@ impl<I> Display for ParseError<I> {
       Self::InvalidColorDepth => write!(f, "unknown value of color depth"),
       Self::InvalidSymmetryLine => write!(f, "unknown value of symmetry line"),
       Self::InvalidUtf8Error(e) => write!(f, "invalid UTF-8 error: {e}"),
-      Self::DecompressZlibError => write!(f, "failed to decompress zlib data"),
+      Self::InvalidZlibData => write!(f, "invalid zlib data"),
       Self::Nom(_, e) => write!(f, "nom error: {:?}", e),
     }
   }

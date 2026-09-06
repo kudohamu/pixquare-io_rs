@@ -1008,11 +1008,15 @@ impl Tileset {
   /// Unlike other `[Type]` values in the format, there is no leading UInt64 count.
   fn compressed_colors(input: &[u8]) -> PPResult<&[u8], Vec<ArgbColor>> {
     let (input, compressed_data) = array_type(le_u8).parse(input)?;
-    let mut decoder = DeflateDecoder::new(&compressed_data[2..]);
+    let deflate_data = compressed_data
+      .get(2..)
+      .ok_or(nom::Err::Failure(ParseError::InvalidZlibData))?;
+
+    let mut decoder = DeflateDecoder::new(deflate_data);
     let mut decompressed_bytes = Vec::new();
     decoder
       .read_to_end(&mut decompressed_bytes)
-      .map_err(|_e| nom::Err::Error(ParseError::DecompressZlibError))?;
+      .map_err(|_e| nom::Err::Error(ParseError::InvalidZlibData))?;
 
     let (_remaining_decompressed, colors) =
       many0(argb_color)
@@ -1024,7 +1028,7 @@ impl Tileset {
           nom::Err::Failure(ParseError::Nom(_, kind)) => {
             nom::Err::Failure(ParseError::Nom(input, kind))
           }
-          _ => nom::Err::Failure(ParseError::DecompressZlibError),
+          _ => nom::Err::Failure(ParseError::InvalidZlibData),
         })?;
 
     Ok((input, colors))
