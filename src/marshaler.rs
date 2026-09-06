@@ -45,6 +45,14 @@ impl Marshal for u64 {
   }
 }
 
+impl Marshal for i16 {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    w.write_all(&self.to_le_bytes())?;
+
+    Ok(())
+  }
+}
+
 impl Marshal for i32 {
   fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
     w.write_all(&self.to_le_bytes())?;

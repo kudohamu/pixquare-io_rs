@@ -9,7 +9,7 @@ use nom::{
   combinator::map_res,
   error::ErrorKind,
   multi::many0,
-  number::complete::{le_f32, le_f64, le_u8, le_u16, le_u32, le_u64},
+  number::complete::{le_f32, le_f64, le_i16, le_u8, le_u16, le_u32, le_u64},
 };
 
 use crate::{
@@ -456,7 +456,7 @@ pub struct Frame {
   /// Default: 2
   pub opacity: f16,
   /// Default: 0.
-  pub z_index: u16,
+  pub z_index: i16,
   /// Custom datas set by the users.
   pub custom_datas: Vec<CustomData>,
   remaining_data: Vec<u8>,
@@ -473,7 +473,7 @@ impl Frame {
       bool,
       dumb_string(header.content_len as usize),
       float16,
-      le_u16,
+      le_i16,
       array_type(CustomData::parse),
     )
       .parse(input)?;
