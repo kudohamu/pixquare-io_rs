@@ -1894,7 +1894,7 @@ pub struct ReferenceLayer {
   /// Default: (0, 0, 0, 0)
   pub color: ArgbColor,
   /// Flip axes.
-  /// OptionSet<UInt8>
+  /// `OptionSet<UInt8>`
   /// Default: 0
   pub flip_axes: FlipAxes,
   remaining_data: Vec<u8>,
