@@ -8,7 +8,7 @@ use crate::{
   primitive_type::OptionSet,
 };
 
-/// https://docs.pixquare.art/pixquare-file/binary-specs#coordinate
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#coordinate>
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Coordinate {
   pub x: i32,
@@ -24,7 +24,7 @@ impl Marshal for Coordinate {
   }
 }
 
-/// https://docs.pixquare.art/pixquare-file/binary-specs#size
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#size>
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Size {
   pub width: u32,
@@ -46,7 +46,7 @@ impl Marshal for Size {
   }
 }
 
-/// https://docs.pixquare.art/pixquare-file/binary-specs#rect
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#rect>
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rect {
   pub origin: Coordinate,
@@ -62,7 +62,7 @@ impl Marshal for Rect {
   }
 }
 
-/// https://docs.pixquare.art/pixquare-file/binary-specs#argbcolor
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#argbcolor>
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct ArgbColor {
   pub r: u8,
@@ -152,7 +152,7 @@ impl Marshal for ArgbColor {
   }
 }
 
-/// https://docs.pixquare.art/pixquare-file/binary-specs#corners
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#corners>
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Corners {
   pub top_left: bool,
@@ -190,7 +190,7 @@ impl Marshal for Corners {
   }
 }
 
-/// https://docs.pixquare.art/pixquare-file/binary-specs#blendmode
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#blendmode>
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BlendMode {
   Normal,

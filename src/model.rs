@@ -56,7 +56,7 @@ impl<T: ModelMarshal> Marshal<()> for T {
 
 /// Header data of CustomData.
 /// 16 bytes
-/// https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes>
 #[derive(Debug)]
 struct CustomDataHeader {
   /// Total size of this model.
@@ -136,7 +136,7 @@ impl ModelMarshal for CustomDataStringContent {
 }
 
 /// Store some custom data set by the users.
-/// https://docs.pixquare.art/pixquare-file/binary-specs#content
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#content>
 #[derive(Debug, Clone)]
 pub enum CustomData {
   String(CustomDataStringContent),
@@ -171,7 +171,7 @@ impl Marshal for CustomData {
 
 /// Header data of FrameContent.
 /// 32 bytes
-/// https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes>
 #[derive(Debug)]
 struct FrameContentHeader {
   /// Size of this model.
@@ -220,7 +220,7 @@ impl Marshal for FrameContentHeader {
 }
 
 /// The color data of a cel.
-/// https://docs.pixquare.art/pixquare-file/binary-specs#content-1
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#content-1>
 #[derive(Debug, Clone)]
 pub struct FrameContent {
   pub id: String,
@@ -306,7 +306,7 @@ impl ModelMarshal for FrameContent {
 
 /// Header data of TilemapFrameContent.
 /// 32 bytes
-/// https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-1
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-1>
 #[derive(Debug)]
 struct TilemapFrameContentHeader {
   /// Size of this model.
@@ -332,7 +332,7 @@ impl Marshal for TilemapFrameContentHeader {
 }
 
 /// The alignment of a tilemap cel.
-/// https://docs.pixquare.art/pixquare-file/binary-specs#content-2
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#content-2>
 #[derive(Debug, Clone)]
 pub struct TilemapFrameContent {
   pub id: String,
@@ -346,7 +346,7 @@ pub struct TilemapFrameContent {
 impl TilemapFrameContent {
   /// Returns value of unassigned tile.
   /// UInt16.max is for unassigned tiles.
-  /// https://docs.pixquare.art/pixquare-file/binary-specs?q=user+data#content-2
+  /// <https://docs.pixquare.art/pixquare-file/binary-specs?q=user+data#content-2>
   pub fn unassigned_tile() -> u16 {
     u16::MAX
   }
@@ -397,7 +397,7 @@ impl ModelMarshal for TilemapFrameContent {
 
 /// Header data of Frame.
 /// 32 bytes
-/// https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-2
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-2>
 #[derive(Debug)]
 struct FrameHeader {
   /// Size of this model.
@@ -436,7 +436,7 @@ impl Marshal for FrameHeader {
 }
 
 /// A frame of the artwork.
-/// https://docs.pixquare.art/pixquare-file/binary-specs#content-3
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#content-3>
 #[derive(Debug, Clone)]
 pub struct Frame {
   /// ID.
@@ -522,7 +522,7 @@ impl ModelMarshal for Frame {
 
 /// Header data of SymmetryLine.
 /// 16 bytes.
-/// https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-1
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-1>
 #[derive(Debug)]
 struct SymmetryLineHeader {
   /// Size of this model.
@@ -561,7 +561,7 @@ impl Marshal for SymmetryLineHeader {
 }
 
 /// Settings of symmetry line.
-/// https://docs.pixquare.art/pixquare-file/binary-specs#content-4
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#content-4>
 #[derive(Debug, Clone)]
 pub struct SymmetryLine {
   /// ID.
@@ -649,7 +649,7 @@ impl ModelMarshal for SymmetryLine {
 
 /// Header data of Tag.
 /// 16 bytes.
-/// https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-2
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-2>
 #[derive(Debug)]
 struct TagHeader {
   /// Size of this model.
@@ -688,7 +688,7 @@ impl Marshal for TagHeader {
 }
 
 /// Tag is a collection data of consecutive frames.
-/// https://docs.pixquare.art/pixquare-file/binary-specs#content-5
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#content-5>
 #[derive(Debug, Clone)]
 pub struct Tag {
   /// ID.
@@ -923,7 +923,7 @@ impl Marshal for TilesetPaletteOrganization {
 
 /// Header data of Tileset.
 /// 32 bytes
-/// https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-3
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-3>
 #[derive(Debug)]
 struct TilesetHeader {
   /// Size of this model.
@@ -949,7 +949,7 @@ impl Marshal for TilesetHeader {
 }
 
 /// 32 bytes
-/// https://docs.pixquare.art/pixquare-file/binary-specs#content-6
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#content-6>
 #[derive(Debug, Clone)]
 pub struct Tileset {
   pub id: String,
@@ -1069,7 +1069,7 @@ impl ModelMarshal for Tileset {
 
 /// Header data of Fx.
 /// 16 bytes
-/// https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-3
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-3>
 #[derive(Debug)]
 struct FxHeader {
   /// Total size of this model.
@@ -1333,7 +1333,7 @@ impl ModelMarshal for FxPatternOverlaryContent {
 }
 
 /// Rendering Effect.
-/// https://docs.pixquare.art/pixquare-file/binary-specs#content-7
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#content-7>
 #[derive(Debug, Clone)]
 pub enum Fx {
   ColorOverlay(FxColorOverlayContent),
@@ -1397,7 +1397,7 @@ impl Marshal for Fx {
 
 /// Header data of Entry.
 /// 16 bytes
-/// https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-4
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-4>
 #[derive(Debug)]
 struct EntryHeader {
   /// Total size of this model.
@@ -1433,7 +1433,7 @@ impl Marshal for EntryHeader {
 }
 
 /// Represents an entry in the artwork (layer, group, etc.), but doesn't have any actual data of the entry.
-/// https://docs.pixquare.art/pixquare-file/binary-specs#content-8
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#content-8>
 #[derive(Debug, Clone)]
 pub struct Entry {
   /// ID length.
@@ -1485,7 +1485,7 @@ impl ModelMarshal for Entry {
 
 /// Header data of Layer.
 /// 32 bytes
-/// https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-4
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-4>
 #[derive(Debug)]
 struct LayerHeader {
   data_size: u32,
@@ -1525,7 +1525,7 @@ impl Marshal for LayerHeader {
 }
 
 /// A layer with all data.
-/// https://docs.pixquare.art/pixquare-file/binary-specs#content-9
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#content-9>
 #[derive(Debug, Clone)]
 pub struct Layer {
   /// ID.
@@ -1661,7 +1661,7 @@ impl ModelMarshal for Layer {
 
 /// Header data of Group.
 /// 32 bytes
-/// https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-5
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-5>
 #[derive(Debug)]
 struct GroupHeader {
   /// Size of this model.
@@ -1827,7 +1827,7 @@ impl ModelMarshal for Group {
 
 /// Header data of ReferenceLayer.
 /// 32 bytes
-/// https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-6
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-6>
 #[derive(Debug)]
 struct ReferenceLayerHeader {
   /// Size of this model.
@@ -1871,7 +1871,7 @@ impl Marshal for ReferenceLayerHeader {
 }
 
 /// A reference layer with all data.
-/// https://docs.pixquare.art/pixquare-file/binary-specs#content-11
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#content-11>
 #[derive(Debug, Clone)]
 pub struct ReferenceLayer {
   /// ID.
@@ -1977,7 +1977,7 @@ impl ModelMarshal for ReferenceLayer {
 
 /// Header data of TilemapLayer.
 /// 32 bytes
-/// https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-7
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#header-32-bytes-7>
 #[derive(Debug)]
 struct TilemapLayerHeader {
   /// Size of this model.
@@ -2002,7 +2002,7 @@ impl Marshal for TilemapLayerHeader {
   }
 }
 
-/// https://docs.pixquare.art/pixquare-file/binary-specs#content-6
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#content-6>
 #[derive(Debug, Clone)]
 pub struct TilemapLayer {
   /// ID.
@@ -2112,7 +2112,7 @@ impl ModelMarshal for TilemapLayer {
 
 /// Header data of Stats.
 /// 16 bytes
-/// https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-5
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-5>
 #[derive(Debug)]
 struct StatsHeader {
   data_size: u16,
@@ -2138,7 +2138,7 @@ impl Marshal for StatsHeader {
 
 /// Contains data like time spent on this file, stroke count, etc.
 /// Default: Empty stat, everything is 0
-/// https://docs.pixquare.art/pixquare-file/binary-specs#content-13
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#content-13>
 #[derive(Debug, Clone)]
 pub struct Stats {
   /// Time spent in seconds.
@@ -2192,7 +2192,7 @@ impl ModelMarshal for Stats {
 }
 
 /// Settings data of grid for canvas.
-/// https://docs.pixquare.art/pixquare-file/binary-specs#canvasgrid
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#canvasgrid>
 #[derive(Debug, Clone)]
 pub struct CanvasGrid {
   pub size: Size,
@@ -2227,7 +2227,7 @@ impl Marshal for CanvasGrid {
 
 /// Header data of GuideLine.
 /// 14 bytes
-/// https://docs.pixquare.art/pixquare-file/binary-specs#header-14-bytes
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#header-14-bytes>
 #[derive(Debug)]
 struct GuideLineHeader {
   _compat: u32,
@@ -2451,7 +2451,7 @@ impl ModelMarshal for GuideLinePerspectiveContent {
 }
 
 /// Settings data of GuideLine.
-/// https://docs.pixquare.art/pixquare-file/binary-specs#content-14
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#content-14>
 #[derive(Debug, Clone, PartialEq)]
 pub enum GuideLine {
   Grid(GuideLineGridContent),
@@ -2510,7 +2510,7 @@ impl Marshal for GuideLine {
 
 /// Header data of Post-processor.
 /// 16 bytes
-/// https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-6
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-6>
 #[derive(Debug)]
 struct PostProcessorHeader {
   /// Total size of this model.
@@ -2843,7 +2843,7 @@ impl Marshal for PostProcessor {
 
 /// Header data of Modifier.
 /// 16 bytes
-/// https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-7
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-7>
 #[derive(Debug)]
 struct ModifierHeader {
   data_size: u64,
@@ -2926,7 +2926,7 @@ impl ModelMarshal for ModifierAnimationSpeedMultiplierContent {
   }
 }
 
-/// https://docs.pixquare.art/pixquare-file/binary-specs#content-16
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#content-16>
 #[derive(Debug, Clone)]
 pub enum Modifier {
   AnimationSpeedMultiplier(ModifierAnimationSpeedMultiplierContent),
@@ -2962,7 +2962,7 @@ impl Marshal for Modifier {
 
 /// Header data of PaletteOrganization.
 /// 16 bytes
-/// https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-8
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-8>
 #[derive(Debug)]
 struct PaletteOrganizationHeader {
   /// Total size of this model.
@@ -3063,7 +3063,7 @@ impl ModelMarshal for PaletteOrganizationAnywhereContent {
   }
 }
 
-/// https://docs.pixquare.art/pixquare-file/binary-specs#content-17
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#content-17>
 #[derive(Debug, Clone, PartialEq)]
 pub enum PaletteOrganization {
   Packed,
@@ -3104,7 +3104,7 @@ impl Marshal for PaletteOrganization {
 }
 
 /// Header data of Artwork.
-/// https://docs.pixquare.art/pixquare-file/binary-specs#header-64-bytes
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#header-64-bytes>
 #[derive(Debug)]
 struct ArtworkHeader {
   /// Total size of the file.
@@ -3144,7 +3144,7 @@ impl Marshal for ArtworkHeader {
 }
 
 /// This is the data of .px files.
-/// https://docs.pixquare.art/pixquare-file/binary-specs#content-18
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#content-18>
 #[derive(Debug, Clone)]
 pub struct Artwork {
   /// ID.
