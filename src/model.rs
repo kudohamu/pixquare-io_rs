@@ -2,7 +2,7 @@ use std::io::{BufReader, Read, Write};
 
 use flate2::{Compression, bufread::DeflateEncoder, read::DeflateDecoder};
 use half::f16;
-use msgw3c::{batch_blend_with, batch_multiply, batch_normal, composite::PorterDuff};
+use msgw3c::{batch_blend_with, composite::PorterDuff};
 use nom::{
   Parser,
   bytes::complete::take,
@@ -3305,6 +3305,31 @@ impl<'a> Artwork {
     }
 
     return Ok(buf);
+  }
+
+  pub fn get_frames(&self) -> &[Frame] {
+    self
+      .layers
+      .first()
+      .map(|layer| layer.frames.as_slice())
+      .or_else(|| {
+        self
+          .tilemap_layers
+          .first()
+          .map(|layer| layer.frames.as_slice())
+      })
+      .unwrap_or(&[])
+  }
+
+  pub fn get_frame(&self, index: usize) -> Option<&Frame> {
+    self.get_frames().get(index)
+  }
+
+  pub fn frames_len(&self) -> usize {
+    let layer_frames_len = self.layers.get(0).map_or(0, |l| l.frames.len());
+    let tilemap_layer_frames_len = self.tilemap_layers.get(0).map_or(0, |l| l.frames.len());
+
+    layer_frames_len.max(tilemap_layer_frames_len)
   }
 
   fn get_ordered_layers(&self, entries: Option<&Vec<Entry>>) -> Vec<Layerable<'_>> {
