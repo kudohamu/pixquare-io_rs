@@ -1339,7 +1339,7 @@ pub enum Fx {
   ColorOverlay(FxColorOverlayContent),
   Outline(FxOutlineContent),
   AntiAliasing(FxAntiAliasingContent),
-  PatternOverlary(FxPatternOverlayContent),
+  PatternOverlay(FxPatternOverlayContent),
 }
 
 impl Fx {
@@ -1368,7 +1368,7 @@ impl Fx {
         let (input, content) =
           FxPatternOverlayContent::parser(header.data_size as usize).parse(input)?;
 
-        Ok((input, Fx::PatternOverlary(content)))
+        Ok((input, Fx::PatternOverlay(content)))
       }
     }
   }
@@ -1386,7 +1386,7 @@ impl Marshal for Fx {
       Fx::AntiAliasing(content) => {
         content.marshal(w)?;
       }
-      Fx::PatternOverlary(content) => {
+      Fx::PatternOverlay(content) => {
         content.marshal(w)?;
       }
     }
@@ -3815,8 +3815,8 @@ mod tests {
     assert_eq!(artwork.layers.len(), 3);
     assert_eq!(artwork.layers[0].name, "Layer 1");
     assert_eq!(artwork.layers[0].fxs.len(), 1);
-    let Fx::PatternOverlary(fx) = &artwork.layers[0].fxs[0] else {
-      panic!("expected Fx::PatternOverlary");
+    let Fx::PatternOverlay(fx) = &artwork.layers[0].fxs[0] else {
+      panic!("expected Fx::PatternOverlay");
     };
     assert_eq!(fx.enabled, true);
     assert_eq!(
