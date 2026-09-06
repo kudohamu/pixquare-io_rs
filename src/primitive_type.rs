@@ -56,13 +56,13 @@ impl OptionSet<u8> {
 impl From<Corners> for OptionSet<u8> {
   fn from(c: Corners) -> Self {
     let b0: u8 = (if c.top_left { 1 } else { 0 }) << 0;
-    let b1: u8 = (if c.top_left { 1 } else { 0 }) << 1;
-    let b2: u8 = (if c.top_left { 1 } else { 0 }) << 2;
-    let b3: u8 = (if c.top_left { 1 } else { 0 }) << 3;
-    let b4: u8 = (if c.top_left { 1 } else { 0 }) << 4;
-    let b5: u8 = (if c.top_left { 1 } else { 0 }) << 5;
-    let b6: u8 = (if c.top_left { 1 } else { 0 }) << 6;
-    let b7: u8 = (if c.top_left { 1 } else { 0 }) << 7;
+    let b1: u8 = (if c.top { 1 } else { 0 }) << 1;
+    let b2: u8 = (if c.top_right { 1 } else { 0 }) << 2;
+    let b3: u8 = (if c.right { 1 } else { 0 }) << 3;
+    let b4: u8 = (if c.bottom_right { 1 } else { 0 }) << 4;
+    let b5: u8 = (if c.bottom { 1 } else { 0 }) << 5;
+    let b6: u8 = (if c.bottom_left { 1 } else { 0 }) << 6;
+    let b7: u8 = (if c.left { 1 } else { 0 }) << 7;
 
     let v = b0 | b1 | b2 | b3 | b4 | b5 | b6 | b7;
 
