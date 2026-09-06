@@ -956,7 +956,7 @@ pub struct Tileset {
   pub name: String,
   pub tile_size: Size,
   /// Compressed color data of each tile using zlib compression.
-  /// After decompressing, it will be in the form of [ARGBColor].
+  /// After decompressing, it will be in the form of `[ARGBColor]`.
   pub tile_images: Vec<Vec<ArgbColor>>,
   /// Tiles per row.
   /// Default: 6
@@ -1267,9 +1267,9 @@ impl ModelMarshal for FxAntiAliasingContent {
   }
 }
 
-/// Content data of pattern overlary for Fx.
+/// Content data of pattern overlay for Fx.
 #[derive(Debug, Clone)]
-pub struct FxPatternOverlaryContent {
+pub struct FxPatternOverlayContent {
   pub enabled: bool,
   pub patterns: Vec<ArgbColor>,
   pub pattern_size: Size,
@@ -1278,7 +1278,7 @@ pub struct FxPatternOverlaryContent {
   remaining_data: Vec<u8>,
 }
 
-impl<'a> FxPatternOverlaryContent {
+impl<'a> FxPatternOverlayContent {
   fn parser(
     data_size: usize,
   ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
@@ -1308,7 +1308,7 @@ impl<'a> FxPatternOverlaryContent {
   }
 }
 
-impl ModelMarshal for FxPatternOverlaryContent {
+impl ModelMarshal for FxPatternOverlayContent {
   type Header = FxHeader;
   const HEADER_SIZE: usize = 16usize;
 
@@ -1339,7 +1339,7 @@ pub enum Fx {
   ColorOverlay(FxColorOverlayContent),
   Outline(FxOutlineContent),
   AntiAliasing(FxAntiAliasingContent),
-  PatternOverlary(FxPatternOverlaryContent),
+  PatternOverlary(FxPatternOverlayContent),
 }
 
 impl Fx {
@@ -1366,7 +1366,7 @@ impl Fx {
       }
       FxType::PatternOverlay => {
         let (input, content) =
-          FxPatternOverlaryContent::parser(header.data_size as usize).parse(input)?;
+          FxPatternOverlayContent::parser(header.data_size as usize).parse(input)?;
 
         Ok((input, Fx::PatternOverlary(content)))
       }
@@ -2002,7 +2002,7 @@ impl Marshal for TilemapLayerHeader {
   }
 }
 
-/// <https://docs.pixquare.art/pixquare-file/binary-specs#content-6>
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#content-12>
 #[derive(Debug, Clone)]
 pub struct TilemapLayer {
   /// ID.
@@ -3208,7 +3208,7 @@ impl<'a> Artwork {
     Ok(artwork)
   }
 
-  /// Writes the file in Aseprite binary format to any writer.
+  /// Writes the file in Pixquare artwork binary format to any writer.
   pub fn write<W: std::io::Write>(&self, w: &mut W) -> Result<(), MarshalError> {
     self.marshal(w)?;
 
@@ -4820,7 +4820,7 @@ mod tests {
     assert!(file.is_ok());
 
     let artwork = file.unwrap();
-    // NOTE: In the latest app verion,
+    // NOTE: In the latest app version,
     // the speed multiplier is applied instantly to each frame within the app
     // and is not saved as data of modifier's field.
     assert_eq!(artwork.modifiers.len(), 0);
