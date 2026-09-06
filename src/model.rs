@@ -766,7 +766,7 @@ impl ModelMarshal for Tag {
     DumbString::new(self.name.clone()).marshal(&mut w)?;
     self.start_index.marshal(&mut w)?;
     self.end_index.marshal(&mut w)?;
-    self.enabled.marshal(&mut w)?;
+    self.selected.marshal(&mut w)?;
     self.color.marshal(&mut w)?;
     self.direction.marshal(&mut w)?;
     self.loop_count.marshal(&mut w)?;
