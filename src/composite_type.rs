@@ -123,7 +123,7 @@ impl TryFrom<&[u8]> for ArgbColor {
 
 impl Blend for ArgbColor {
   fn from_color(c: msgw3c::color::C) -> Self {
-    Self::from_straight_alpha(
+    Self::new(
       (c.r * 255.).clamp(0.0, 255.0) as u8,
       (c.g * 255.).clamp(0.0, 255.0) as u8,
       (c.b * 255.).clamp(0.0, 255.0) as u8,
