@@ -3321,8 +3321,8 @@ impl<'a> Artwork {
       z_index_a.cmp(&z_index_b)
     });
 
-    let data_size = (self.canvas_size.width as usize) * (self.canvas_size.height as usize) * 4;
-    let mut composited_image = vec![ArgbColor::TRANSPARENT; data_size];
+    let pixel_len = (self.canvas_size.width as usize) * (self.canvas_size.height as usize);
+    let mut composited_image = vec![ArgbColor::TRANSPARENT; pixel_len];
 
     for frame_data in frame_datas {
       match frame_data {
@@ -3361,6 +3361,7 @@ impl<'a> Artwork {
       };
     }
 
+    let data_size = pixel_len * 4;
     let mut buf: Vec<u8> = vec![0b0; data_size];
     for (i, color) in composited_image.iter().enumerate() {
       buf[i * 4] = color.r;
