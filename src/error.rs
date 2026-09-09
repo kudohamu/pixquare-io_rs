@@ -144,8 +144,14 @@ pub type PMResult<I = ()> = Result<I, MarshalError>;
 #[derive(Debug)]
 pub enum ArtworkOperationError {
   ArrayIndexOutOfBounds((usize, usize)),
+  FrameContentNotFound(String),
+  FrameIndexOutOfBounds((usize, usize)),
+  GroupNotFound(String),
   InsufficientBufferSize,
+  LayerNotFound(String),
   Msgw3c(msgw3c::error::Error),
+  TilemapLayerNotFound(String),
+  TilesetNotFound(String),
 }
 
 impl Display for ArtworkOperationError {
@@ -158,11 +164,33 @@ impl Display for ArtworkOperationError {
           actual, len
         )
       }
+      Self::FrameContentNotFound(id) => {
+        write!(f, "frame content is not found (id: {})", id)
+      }
+      Self::FrameIndexOutOfBounds((actual, len)) => {
+        write!(
+          f,
+          "frame index `{}` is out of bounds for length `{}`",
+          actual, len
+        )
+      }
+      Self::GroupNotFound(id) => {
+        write!(f, "group is not found (id: {})", id)
+      }
       Self::InsufficientBufferSize => {
         write!(f, "the buffer size is insufficient for the image size")
       }
+      Self::LayerNotFound(id) => {
+        write!(f, "layer is not found (id: {})", id)
+      }
       Self::Msgw3c(err) => {
         write!(f, "blending error: {}", err)
+      }
+      Self::TilemapLayerNotFound(id) => {
+        write!(f, "tilemap layer is not found (id: {})", id)
+      }
+      Self::TilesetNotFound(id) => {
+        write!(f, "tileset is not found (id: {})", id)
       }
     }
   }

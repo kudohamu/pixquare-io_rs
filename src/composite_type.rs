@@ -93,6 +93,13 @@ impl ArgbColor {
       a,
     }
   }
+
+  pub fn multiply_alpha(&mut self, alpha: f32) {
+    self.r = (self.r as f32 * alpha) as u8;
+    self.g = (self.g as f32 * alpha) as u8;
+    self.b = (self.b as f32 * alpha) as u8;
+    self.a = (self.a as f32 * alpha) as u8;
+  }
 }
 
 impl TryFrom<&[u8]> for ArgbColor {

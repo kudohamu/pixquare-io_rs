@@ -2,7 +2,6 @@ use std::io::{BufReader, Read, Write};
 
 use flate2::{Compression, bufread::DeflateEncoder, read::DeflateDecoder};
 use half::f16;
-use msgw3c::{batch_blend_with, composite::PorterDuff};
 use nom::{
   Parser,
   bytes::complete::take,
@@ -25,10 +24,7 @@ use crate::{
   error::{ArtworkOperationError, MarshalError, PMResult, PPResult, ParseError},
   marshaler::Marshal,
   primitive_type::{DumbString, OptionSet, TypeN},
-  utility_type::{
-    LayerVisibility, Layerable, RenderFrameData, RenderFrameDataRegularLayer,
-    RenderFrameDataTilemapLayer,
-  },
+  utility_type::{LayerVisibility, RenderPlan},
   writer::{CountingWrite, CountingWriter},
 };
 
@@ -232,25 +228,6 @@ pub struct FrameContent {
 }
 
 impl FrameContent {
-  /// Returns the image data composited backdrop and frame data.
-  pub fn composite_content_onto(
-    &self,
-    backdrop: &[ArgbColor],
-    blend_mode: BlendMode,
-  ) -> Result<Vec<ArgbColor>, ArtworkOperationError> {
-    let mut target = vec![ArgbColor::TRANSPARENT; self.colors.len()];
-
-    batch_blend_with(
-      &self.colors,
-      &backdrop,
-      &mut target,
-      blend_mode.into(),
-      PorterDuff::SourceOver,
-    )?;
-
-    Ok(target.into())
-  }
-
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = FrameContentHeader::parse(input)?;
     let (rest, input) = take(header.data_size as usize).parse(input)?;
@@ -358,43 +335,6 @@ impl TilemapFrameContent {
   /// Returns whether the tile is unassigned.
   pub fn is_unassigned_tile(tile_index: u16) -> bool {
     tile_index == Self::unassigned_tile()
-  }
-
-  /// Returns the image data composited backdrop and tilemap frame data.
-  pub fn composite_content_onto(
-    &self,
-    tileset: &Tileset,
-    backdrop: &[ArgbColor],
-    blend_mode: BlendMode,
-  ) -> Result<Vec<ArgbColor>, ArtworkOperationError> {
-    let pixel_len = (self.tile_size.width * self.tile_size.height) as usize * self.tiles.len();
-    let mut target = vec![ArgbColor::TRANSPARENT; pixel_len];
-    let mut frame_data = vec![ArgbColor::TRANSPARENT; pixel_len];
-
-    for grid_index in 0..self.tiles.len() {
-      let tile_index = self.tiles[grid_index];
-
-      if Self::is_unassigned_tile(tile_index) {
-        continue;
-      }
-
-      let start_index = grid_index as usize * self.tile_size.width as usize;
-      let tile_data = &tileset.tile_images[tile_index as usize];
-
-      for pixel_index in 0..tile_data.len() {
-        frame_data[start_index + pixel_index] = tile_data[pixel_index];
-      }
-    }
-
-    batch_blend_with(
-      &frame_data,
-      &backdrop,
-      &mut target,
-      blend_mode.into(),
-      PorterDuff::SourceOver,
-    )?;
-
-    Ok(target.into())
   }
 
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
@@ -3271,95 +3211,12 @@ impl<'a> Artwork {
     frame_index: usize,
     visibility: LayerVisibility,
   ) -> Result<Vec<u8>, ArtworkOperationError> {
-    let mut frame_datas = Vec::<RenderFrameData>::new();
-    let layers = self.get_ordered_layers(None);
-
-    for layer in layers {
-      match layer {
-        Layerable::RegularLayer(layer) => {
-          if visibility == LayerVisibility::Visible && !layer.visible {
-            continue;
-          }
-
-          let frame = layer.frames.get(frame_index).ok_or_else(|| {
-            ArtworkOperationError::ArrayIndexOutOfBounds((frame_index, layer.frames.len()))
-          })?;
-          let frame_data = RenderFrameDataRegularLayer {
-            frame: frame.clone(),
-            blend_mode: layer.blend_mode,
-          };
-          frame_datas.push(RenderFrameData::RegularLayer(frame_data));
-        }
-        Layerable::TilemapLayer(layer) => {
-          if visibility == LayerVisibility::Visible && !layer.visible {
-            continue;
-          }
-
-          let frame = layer.frames.get(frame_index).ok_or_else(|| {
-            ArtworkOperationError::ArrayIndexOutOfBounds((frame_index, layer.frames.len()))
-          })?;
-          let frame_data = RenderFrameDataTilemapLayer {
-            frame: frame.clone(),
-            tileset_id: layer.tileset_id.clone(),
-            blend_mode: layer.blend_mode,
-          };
-          frame_datas.push(RenderFrameData::TilemapLayer(frame_data));
-        }
-      }
-    }
-    // stable sort by z_index
-    frame_datas.sort_by(|a, b| {
-      let z_index_a = match a {
-        RenderFrameData::RegularLayer(data) => data.frame.z_index,
-        RenderFrameData::TilemapLayer(data) => data.frame.z_index,
-      };
-      let z_index_b = match b {
-        RenderFrameData::RegularLayer(data) => data.frame.z_index,
-        RenderFrameData::TilemapLayer(data) => data.frame.z_index,
-      };
-
-      z_index_a.cmp(&z_index_b)
-    });
+    let render_plan = RenderPlan::build(self, frame_index, visibility)?;
 
     let pixel_len = (self.canvas_size.width as usize) * (self.canvas_size.height as usize);
     let mut composited_image = vec![ArgbColor::TRANSPARENT; pixel_len];
 
-    for frame_data in frame_datas {
-      match frame_data {
-        RenderFrameData::RegularLayer(data) => {
-          let content = self
-            .frame_contents
-            .iter()
-            .find(|c| c.id == data.frame.content_id);
-
-          let Some(content) = content else {
-            continue;
-          };
-
-          composited_image =
-            content.composite_content_onto(&mut composited_image[..], data.blend_mode)?;
-        }
-        RenderFrameData::TilemapLayer(data) => {
-          let content = self
-            .tilemap_frame_contents
-            .iter()
-            .find(|c| c.id == data.frame.content_id);
-          let Some(content) = content else {
-            continue;
-          };
-          let Some(tileset) = self
-            .tilesets
-            .iter()
-            .find(|tileset| tileset.id == data.tileset_id)
-          else {
-            continue;
-          };
-
-          composited_image =
-            content.composite_content_onto(tileset, &mut composited_image[..], data.blend_mode)?;
-        }
-      };
-    }
+    composited_image = render_plan.render_onto(&composited_image[..])?;
 
     let data_size = pixel_len * 4;
     let mut buf: Vec<u8> = vec![0b0; data_size];
@@ -3396,39 +3253,6 @@ impl<'a> Artwork {
     let tilemap_layer_frames_len = self.tilemap_layers.get(0).map_or(0, |l| l.frames.len());
 
     layer_frames_len.max(tilemap_layer_frames_len)
-  }
-
-  fn get_ordered_layers(&self, entries: Option<&Vec<Entry>>) -> Vec<Layerable<'_>> {
-    let Some(entries) = entries else {
-      return self.get_ordered_layers(Some(&self.entries));
-    };
-
-    let mut layers = Vec::new();
-
-    for entry in entries {
-      match entry.entry_type {
-        EntryType::RegularLayer => {
-          if let Some(layer) = self.layers.iter().find(|l| l.id == entry.id) {
-            layers.push(Layerable::RegularLayer(layer));
-          };
-        }
-        EntryType::Group => {
-          if let Some(group) = self.groups.iter().find(|g| g.id == entry.id) {
-            let mut child_layers = self.get_ordered_layers(Some(&group.child_entries));
-
-            layers.append(&mut child_layers);
-          }
-        }
-        EntryType::TilemapLayer => {
-          if let Some(layer) = self.tilemap_layers.iter().find(|l| l.id == entry.id) {
-            layers.push(Layerable::TilemapLayer(layer));
-          };
-        }
-        EntryType::ReferenceLayer => (),
-      }
-    }
-
-    return layers;
   }
 
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
