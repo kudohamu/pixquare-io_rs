@@ -2,7 +2,7 @@ use half::f16;
 use msgw3c::{batch_blend_with, batch_normal, composite::PorterDuff};
 
 use crate::{
-  composite_type::{ArgbColor, EntryType},
+  composite_type::{ArgbColor, EntryType, Size},
   error::ArtworkOperationError,
   model::{Artwork, Entry, Frame, FrameContent, Layer, TilemapFrameContent, TilemapLayer, Tileset},
 };
@@ -31,6 +31,7 @@ pub(crate) enum RenderPlan<'a> {
     frame: &'a Frame,
     content: &'a TilemapFrameContent,
     tileset: &'a Tileset,
+    canvas_size: Size,
     base_index: usize,
   },
 }
@@ -159,6 +160,7 @@ impl<'a> RenderPlan<'a> {
             content,
             tileset,
             base_index,
+            canvas_size: artwork.canvas_size,
           };
           plans.push(plan);
         }
@@ -226,11 +228,12 @@ impl<'a> RenderPlan<'a> {
         content,
         tileset,
         base_index: _base_index,
+        canvas_size,
       } => {
-        let pixel_len =
-          (content.tile_size.width * content.tile_size.height) as usize * content.tiles.len();
-        let mut composited = vec![ArgbColor::TRANSPARENT; pixel_len];
-        let mut frame_data = vec![ArgbColor::TRANSPARENT; pixel_len];
+        let canvas_pixel_len = (canvas_size.width * canvas_size.height) as usize;
+        let mut composited = vec![ArgbColor::TRANSPARENT; canvas_pixel_len];
+        let mut frame_data = vec![ArgbColor::TRANSPARENT; canvas_pixel_len];
+        let grid_width = (canvas_size.width / content.tile_size.width) as usize;
 
         for grid_index in 0..content.tiles.len() {
           let tile_index = content.tiles[grid_index];
@@ -239,11 +242,20 @@ impl<'a> RenderPlan<'a> {
             continue;
           }
 
-          let start_index = grid_index as usize * content.tile_size.width as usize;
+          let grid_x = grid_index % grid_width;
+          let grid_y = grid_index / grid_width;
+
           let tile_data = &tileset.tile_images[tile_index as usize];
 
-          for pixel_index in 0..tile_data.len() {
-            frame_data[start_index + pixel_index] = tile_data[pixel_index];
+          for tile_pixel_index in 0..tile_data.len() {
+            let tile_x = tile_pixel_index % content.tile_size.width as usize;
+            let tile_y = tile_pixel_index / content.tile_size.width as usize;
+
+            let canvas_x = grid_x * content.tile_size.width as usize + tile_x;
+            let canvas_y = grid_y * content.tile_size.height as usize + tile_y;
+            let canvas_index = canvas_y * canvas_size.width as usize + canvas_x;
+
+            frame_data[canvas_index] = tile_data[tile_pixel_index];
           }
         }
 
@@ -291,6 +303,7 @@ impl<'a> RenderPlan<'a> {
         content: _content,
         tileset: _tileset,
         base_index,
+        canvas_size: _canvas_size,
       } => {
         if frame.z_index == 0 {
           (*base_index) as i16
