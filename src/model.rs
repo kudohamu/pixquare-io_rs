@@ -3216,7 +3216,7 @@ impl<'a> Artwork {
     let pixel_len = (self.canvas_size.width as usize) * (self.canvas_size.height as usize);
     let mut composited_image = vec![ArgbColor::TRANSPARENT; pixel_len];
 
-    composited_image = render_plan.render_onto(&composited_image[..])?;
+    render_plan.render_onto(&mut composited_image)?;
 
     let data_size = pixel_len * 4;
     let mut buf: Vec<u8> = vec![0b0; data_size];

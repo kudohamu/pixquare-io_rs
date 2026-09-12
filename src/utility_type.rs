@@ -1,8 +1,8 @@
 use half::f16;
-use msgw3c::{batch_blend_with, batch_normal, composite::PorterDuff};
+use msgw3c::{Blend, batch_blend_with_in_place, batch_normal_in_place, composite::PorterDuff};
 
 use crate::{
-  composite_type::{ArgbColor, EntryType, Size},
+  composite_type::{ArgbColor, BlendMode, EntryType, Size},
   error::ArtworkOperationError,
   model::{Artwork, Entry, Frame, FrameContent, Layer, TilemapFrameContent, TilemapLayer, Tileset},
 };
@@ -18,6 +18,7 @@ pub(crate) enum RenderPlan<'a> {
   Group {
     opacity: f32,
     base_index: usize,
+    clipping_masks: Vec<RenderPlan<'a>>,
     children: Vec<RenderPlan<'a>>,
   },
   RegularLayer {
@@ -25,6 +26,7 @@ pub(crate) enum RenderPlan<'a> {
     frame: &'a Frame,
     content: &'a FrameContent,
     base_index: usize,
+    clipping_masks: Vec<RenderPlan<'a>>,
   },
   TilemapLayer {
     layer: &'a TilemapLayer,
@@ -47,6 +49,7 @@ impl<'a> RenderPlan<'a> {
     Ok(Self::Group {
       opacity: 1.,
       base_index: 0,
+      clipping_masks: Vec::new(),
       children: plans,
     })
   }
@@ -76,9 +79,14 @@ impl<'a> RenderPlan<'a> {
             Self::build_children(&group.child_entries, artwork, frame_index, visibility)?;
           child_plans.sort_by(|a, b| a.order_index().cmp(&b.order_index()));
 
+          let mut clipping_masks =
+            Self::build_children(&group.clipping_masks, artwork, frame_index, visibility)?;
+          clipping_masks.sort_by(|a, b| a.order_index().cmp(&b.order_index()));
+
           let plan = RenderPlan::Group {
             opacity: group.opacity.into(),
             base_index,
+            clipping_masks,
             children: child_plans,
           };
           plans.push(plan);
@@ -110,11 +118,16 @@ impl<'a> RenderPlan<'a> {
               frame.content_id.clone(),
             ))?;
 
+          let mut clipping_masks =
+            Self::build_children(&layer.clipping_masks, artwork, frame_index, visibility)?;
+          clipping_masks.sort_by(|a, b| a.order_index().cmp(&b.order_index()));
+
           let plan = RenderPlan::RegularLayer {
             layer,
             frame: &frame,
             content,
             base_index,
+            clipping_masks,
           };
           plans.push(plan);
         }
@@ -172,36 +185,38 @@ impl<'a> RenderPlan<'a> {
     Ok(plans)
   }
 
-  pub fn render_onto(
-    &self,
-    backdrop: &[ArgbColor],
-  ) -> Result<Vec<ArgbColor>, ArtworkOperationError> {
+  pub fn render_onto(&self, mut backdrop: &mut [ArgbColor]) -> Result<(), ArtworkOperationError> {
     match self {
       Self::Group {
         opacity,
         base_index: _base_index,
+        clipping_masks,
         children,
       } => {
         let mut offscreen = vec![ArgbColor::TRANSPARENT; backdrop.len()];
 
         for plan in children {
-          offscreen = plan.render_onto(&offscreen[..])?;
+          plan.render_onto(&mut offscreen)?;
         }
 
         for color in offscreen.iter_mut() {
           color.multiply_alpha(*opacity);
         }
 
-        let mut composited = vec![ArgbColor::TRANSPARENT; backdrop.len()];
-        batch_normal(&offscreen, backdrop, &mut composited)?;
+        for mask in clipping_masks {
+          mask.clip_onto(&mut offscreen)?;
+        }
 
-        Ok(composited)
+        batch_normal_in_place(&offscreen, &mut backdrop)?;
+
+        Ok(())
       }
       Self::RegularLayer {
         layer,
         frame,
         content,
         base_index: _base_index,
+        clipping_masks,
       } => {
         let mut foreground = content.colors.clone();
 
@@ -211,16 +226,18 @@ impl<'a> RenderPlan<'a> {
           foreground.multiply_alpha(frame.opacity.to_f32());
         }
 
-        let mut composited = vec![ArgbColor::TRANSPARENT; backdrop.len()];
-        batch_blend_with(
+        for mask in clipping_masks {
+          mask.clip_onto(&mut foreground)?;
+        }
+
+        batch_blend_with_in_place(
           &foreground,
-          &backdrop,
-          &mut composited,
-          layer.blend_mode.into(),
+          &mut backdrop,
+          self.effective_blend_mode().into(),
           PorterDuff::SourceOver,
         )?;
 
-        Ok(composited)
+        Ok(())
       }
       Self::TilemapLayer {
         layer,
@@ -231,7 +248,6 @@ impl<'a> RenderPlan<'a> {
         canvas_size,
       } => {
         let canvas_pixel_len = (canvas_size.width * canvas_size.height) as usize;
-        let mut composited = vec![ArgbColor::TRANSPARENT; canvas_pixel_len];
         let mut frame_data = vec![ArgbColor::TRANSPARENT; canvas_pixel_len];
         let grid_width = (canvas_size.width / content.tile_size.width) as usize;
 
@@ -265,15 +281,14 @@ impl<'a> RenderPlan<'a> {
           frame_data.multiply_alpha(frame.opacity.to_f32());
         }
 
-        batch_blend_with(
+        batch_blend_with_in_place(
           &frame_data,
-          &backdrop,
-          &mut composited,
+          &mut backdrop,
           layer.blend_mode.into(),
           PorterDuff::SourceOver,
         )?;
 
-        Ok(composited)
+        Ok(())
       }
     }
   }
@@ -283,12 +298,14 @@ impl<'a> RenderPlan<'a> {
       Self::Group {
         opacity: _opacity,
         base_index,
+        clipping_masks: _clipping_masks,
         children: _children,
       } => (*base_index) as i16,
       Self::RegularLayer {
         layer: _layer,
         frame,
         content: _content,
+        clipping_masks: _clipping_masks,
         base_index,
       } => {
         if frame.z_index == 0 {
@@ -311,6 +328,45 @@ impl<'a> RenderPlan<'a> {
           frame.z_index
         }
       }
+    }
+  }
+
+  fn clip_onto(&self, backdrop: &mut [ArgbColor]) -> Result<(), ArtworkOperationError> {
+    let mut offscreen = vec![ArgbColor::TRANSPARENT; backdrop.len()];
+
+    self.render_onto(&mut offscreen)?;
+
+    for (index, m) in offscreen.iter_mut().enumerate() {
+      let b = backdrop[index];
+
+      m.multiply_alpha(b.to_color().a);
+    }
+
+    batch_blend_with_in_place(
+      &offscreen,
+      backdrop,
+      self.effective_blend_mode().into(),
+      PorterDuff::SourceOver,
+    )?;
+
+    Ok(())
+  }
+
+  fn effective_blend_mode(&self) -> BlendMode {
+    match self {
+      Self::RegularLayer {
+        layer,
+        clipping_masks,
+        ..
+      } => {
+        if clipping_masks.is_empty() {
+          layer.blend_mode
+        } else {
+          BlendMode::Normal
+        }
+      }
+      Self::TilemapLayer { layer, .. } => layer.blend_mode,
+      Self::Group { .. } => BlendMode::Normal,
     }
   }
 }
