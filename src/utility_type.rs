@@ -18,7 +18,9 @@ pub(crate) enum RenderPlan<'a> {
   Group {
     opacity: f32,
     base_index: usize,
+    has_cropping_masks: bool,
     clipping_masks: Vec<RenderPlan<'a>>,
+    cropping_masks: Vec<RenderPlan<'a>>,
     children: Vec<RenderPlan<'a>>,
   },
   RegularLayer {
@@ -26,7 +28,10 @@ pub(crate) enum RenderPlan<'a> {
     frame: &'a Frame,
     content: &'a FrameContent,
     base_index: usize,
+    has_clipping_masks: bool,
+    has_cropping_masks: bool,
     clipping_masks: Vec<RenderPlan<'a>>,
+    cropping_masks: Vec<RenderPlan<'a>>,
   },
   TilemapLayer {
     layer: &'a TilemapLayer,
@@ -49,7 +54,9 @@ impl<'a> RenderPlan<'a> {
     Ok(Self::Group {
       opacity: 1.,
       base_index: 0,
+      has_cropping_masks: false,
       clipping_masks: Vec::new(),
+      cropping_masks: Vec::new(),
       children: plans,
     })
   }
@@ -83,10 +90,16 @@ impl<'a> RenderPlan<'a> {
             Self::build_children(&group.clipping_masks, artwork, frame_index, visibility)?;
           clipping_masks.sort_by(|a, b| a.order_index().cmp(&b.order_index()));
 
+          let mut cropping_masks =
+            Self::build_children(&group.cropping_masks, artwork, frame_index, visibility)?;
+          cropping_masks.sort_by(|a, b| a.order_index().cmp(&b.order_index()));
+
           let plan = RenderPlan::Group {
             opacity: group.opacity.into(),
             base_index,
+            has_cropping_masks: !group.cropping_masks.is_empty(),
             clipping_masks,
+            cropping_masks,
             children: child_plans,
           };
           plans.push(plan);
@@ -122,12 +135,19 @@ impl<'a> RenderPlan<'a> {
             Self::build_children(&layer.clipping_masks, artwork, frame_index, visibility)?;
           clipping_masks.sort_by(|a, b| a.order_index().cmp(&b.order_index()));
 
+          let mut cropping_masks =
+            Self::build_children(&layer.cropping_masks, artwork, frame_index, visibility)?;
+          cropping_masks.sort_by(|a, b| a.order_index().cmp(&b.order_index()));
+
           let plan = RenderPlan::RegularLayer {
             layer,
             frame: &frame,
             content,
             base_index,
+            has_clipping_masks: !layer.clipping_masks.is_empty(),
+            has_cropping_masks: !layer.cropping_masks.is_empty(),
             clipping_masks,
+            cropping_masks,
           };
           plans.push(plan);
         }
@@ -189,9 +209,11 @@ impl<'a> RenderPlan<'a> {
     match self {
       Self::Group {
         opacity,
-        base_index: _base_index,
+        has_cropping_masks,
         clipping_masks,
+        cropping_masks,
         children,
+        ..
       } => {
         let mut offscreen = vec![ArgbColor::TRANSPARENT; backdrop.len()];
 
@@ -203,8 +225,12 @@ impl<'a> RenderPlan<'a> {
           color.multiply_alpha(*opacity);
         }
 
-        for mask in clipping_masks {
-          mask.clip_onto(&mut offscreen)?;
+        if *has_cropping_masks {
+          apply_cropping(&mut offscreen, cropping_masks)?;
+        } else {
+          for mask in clipping_masks {
+            mask.clip_onto(&mut offscreen)?;
+          }
         }
 
         batch_normal_in_place(&offscreen, &mut backdrop)?;
@@ -215,8 +241,10 @@ impl<'a> RenderPlan<'a> {
         layer,
         frame,
         content,
-        base_index: _base_index,
+        has_cropping_masks,
         clipping_masks,
+        cropping_masks,
+        ..
       } => {
         let mut foreground = content.colors.clone();
 
@@ -226,8 +254,12 @@ impl<'a> RenderPlan<'a> {
           foreground.multiply_alpha(frame.opacity.to_f32());
         }
 
-        for mask in clipping_masks {
-          mask.clip_onto(&mut foreground)?;
+        if *has_cropping_masks {
+          apply_cropping(&mut foreground, cropping_masks)?;
+        } else {
+          for mask in clipping_masks {
+            mask.clip_onto(&mut foreground)?;
+          }
         }
 
         batch_blend_with_in_place(
@@ -244,8 +276,8 @@ impl<'a> RenderPlan<'a> {
         frame,
         content,
         tileset,
-        base_index: _base_index,
         canvas_size,
+        ..
       } => {
         let canvas_pixel_len = (canvas_size.width * canvas_size.height) as usize;
         let mut frame_data = vec![ArgbColor::TRANSPARENT; canvas_pixel_len];
@@ -295,18 +327,9 @@ impl<'a> RenderPlan<'a> {
 
   fn order_index(&self) -> i16 {
     match self {
-      Self::Group {
-        opacity: _opacity,
-        base_index,
-        clipping_masks: _clipping_masks,
-        children: _children,
-      } => (*base_index) as i16,
+      Self::Group { base_index, .. } => (*base_index) as i16,
       Self::RegularLayer {
-        layer: _layer,
-        frame,
-        content: _content,
-        clipping_masks: _clipping_masks,
-        base_index,
+        frame, base_index, ..
       } => {
         if frame.z_index == 0 {
           (*base_index) as i16
@@ -315,12 +338,7 @@ impl<'a> RenderPlan<'a> {
         }
       }
       Self::TilemapLayer {
-        layer: _layer,
-        frame,
-        content: _content,
-        tileset: _tileset,
-        base_index,
-        canvas_size: _canvas_size,
+        frame, base_index, ..
       } => {
         if frame.z_index == 0 {
           (*base_index) as i16
@@ -356,19 +374,35 @@ impl<'a> RenderPlan<'a> {
     match self {
       Self::RegularLayer {
         layer,
-        clipping_masks,
+        has_clipping_masks,
+        has_cropping_masks,
         ..
       } => {
-        if clipping_masks.is_empty() {
-          layer.blend_mode
-        } else {
+        if *has_clipping_masks || *has_cropping_masks {
           BlendMode::Normal
+        } else {
+          layer.blend_mode
         }
       }
       Self::TilemapLayer { layer, .. } => layer.blend_mode,
       Self::Group { .. } => BlendMode::Normal,
     }
   }
+}
+
+fn apply_cropping<'a>(
+  foreground: &mut [ArgbColor],
+  cropping_masks: &Vec<RenderPlan<'a>>,
+) -> Result<(), ArtworkOperationError> {
+  let mut offscreen = vec![ArgbColor::TRANSPARENT; foreground.len()];
+  for mask in cropping_masks {
+    mask.render_onto(&mut offscreen)?;
+  }
+  for (index, m) in offscreen.iter().enumerate() {
+    foreground[index].multiply_alpha(m.to_color().a);
+  }
+
+  Ok(())
 }
 
 trait ArgbColorSlice {
