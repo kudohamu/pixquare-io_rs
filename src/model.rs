@@ -2,6 +2,7 @@ use std::io::{BufReader, Read, Write};
 
 use flate2::{Compression, bufread::DeflateEncoder, read::DeflateDecoder};
 use half::f16;
+use msgw3c::{batch_blend_with_in_place, composite::PorterDuff};
 use nom::{
   Parser,
   bytes::complete::take,
@@ -1117,6 +1118,28 @@ impl<'a> FxColorOverlayContent {
       ))
     }
   }
+
+  fn apply(&self, source: &[ArgbColor]) -> Result<Vec<ArgbColor>, ArtworkOperationError> {
+    if !self.enabled {
+      return Ok(source.into());
+    }
+
+    let mut overlay = vec![self.color; source.len()];
+
+    for (index, s) in source.iter().enumerate() {
+      overlay[index].multiply_alpha(s.a);
+    }
+
+    let mut offscreen: Vec<ArgbColor> = source.into();
+    batch_blend_with_in_place(
+      &overlay,
+      &mut offscreen,
+      self.blend_mode.into(),
+      PorterDuff::SourceOver,
+    )?;
+
+    Ok(offscreen)
+  }
 }
 
 impl ModelMarshal for FxColorOverlayContent {
@@ -1360,6 +1383,16 @@ impl Fx {
 
         Ok((input, Fx::PatternOverlay(content)))
       }
+    }
+  }
+
+  pub(crate) fn apply(
+    &self,
+    source: &[ArgbColor],
+  ) -> Result<Vec<ArgbColor>, ArtworkOperationError> {
+    match self {
+      Self::ColorOverlay(content) => content.apply(source),
+      _ => Ok(source.into()),
     }
   }
 }

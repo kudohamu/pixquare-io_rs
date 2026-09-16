@@ -94,7 +94,13 @@ impl ArgbColor {
     }
   }
 
-  pub fn multiply_alpha(&mut self, alpha: f32) {
+  pub fn multiply_alpha(&mut self, alpha: u8) {
+    let a = (alpha as f32) / 255.;
+
+    self.multiply_alpha_f32(a);
+  }
+
+  pub fn multiply_alpha_f32(&mut self, alpha: f32) {
     self.r = (self.r as f32 * alpha) as u8;
     self.g = (self.g as f32 * alpha) as u8;
     self.b = (self.b as f32 * alpha) as u8;

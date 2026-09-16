@@ -1,5 +1,5 @@
 use half::f16;
-use msgw3c::{Blend, batch_blend_with_in_place, batch_normal_in_place, composite::PorterDuff};
+use msgw3c::{batch_blend_with_in_place, batch_normal_in_place, composite::PorterDuff};
 
 use crate::{
   composite_type::{ArgbColor, BlendMode, EntryType, Size},
@@ -222,7 +222,7 @@ impl<'a> RenderPlan<'a> {
         }
 
         for color in offscreen.iter_mut() {
-          color.multiply_alpha(*opacity);
+          color.multiply_alpha_f32(*opacity);
         }
 
         if *has_cropping_masks {
@@ -249,9 +249,9 @@ impl<'a> RenderPlan<'a> {
         let mut foreground = content.colors.clone();
 
         if frame.opacity == f16::from_f32(2.0) {
-          foreground.multiply_alpha(layer.opacity.to_f32());
+          foreground.multiply_alpha_f32(layer.opacity.to_f32());
         } else {
-          foreground.multiply_alpha(frame.opacity.to_f32());
+          foreground.multiply_alpha_f32(frame.opacity.to_f32());
         }
 
         if *has_cropping_masks {
@@ -260,6 +260,10 @@ impl<'a> RenderPlan<'a> {
           for mask in clipping_masks {
             mask.clip_onto(&mut foreground)?;
           }
+        }
+
+        for fx in &layer.fxs {
+          foreground = fx.apply(&foreground)?;
         }
 
         batch_blend_with_in_place(
@@ -308,9 +312,9 @@ impl<'a> RenderPlan<'a> {
         }
 
         if frame.opacity == f16::from_f32(2.0) {
-          frame_data.multiply_alpha(layer.opacity.to_f32());
+          frame_data.multiply_alpha_f32(layer.opacity.to_f32());
         } else {
-          frame_data.multiply_alpha(frame.opacity.to_f32());
+          frame_data.multiply_alpha_f32(frame.opacity.to_f32());
         }
 
         batch_blend_with_in_place(
@@ -357,7 +361,7 @@ impl<'a> RenderPlan<'a> {
     for (index, m) in offscreen.iter_mut().enumerate() {
       let b = backdrop[index];
 
-      m.multiply_alpha(b.to_color().a);
+      m.multiply_alpha(b.a);
     }
 
     batch_blend_with_in_place(
@@ -399,20 +403,20 @@ fn apply_cropping<'a>(
     mask.render_onto(&mut offscreen)?;
   }
   for (index, m) in offscreen.iter().enumerate() {
-    foreground[index].multiply_alpha(m.to_color().a);
+    foreground[index].multiply_alpha(m.a);
   }
 
   Ok(())
 }
 
 trait ArgbColorSlice {
-  fn multiply_alpha(&mut self, alpha: f32);
+  fn multiply_alpha_f32(&mut self, alpha: f32);
 }
 
 impl ArgbColorSlice for [ArgbColor] {
-  fn multiply_alpha(&mut self, alpha: f32) {
+  fn multiply_alpha_f32(&mut self, alpha: f32) {
     for color in self {
-      color.multiply_alpha(alpha);
+      color.multiply_alpha_f32(alpha);
     }
   }
 }
