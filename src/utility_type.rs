@@ -248,10 +248,8 @@ impl<'a> RenderPlan<'a> {
       } => {
         let mut foreground = content.colors.clone();
 
-        if frame.opacity == f16::from_f32(2.0) {
-          foreground.multiply_alpha_f32(layer.opacity.to_f32());
-        } else {
-          foreground.multiply_alpha_f32(frame.opacity.to_f32());
+        for fx in &layer.fxs {
+          foreground = fx.apply(&foreground)?;
         }
 
         if *has_cropping_masks {
@@ -262,8 +260,10 @@ impl<'a> RenderPlan<'a> {
           }
         }
 
-        for fx in &layer.fxs {
-          foreground = fx.apply(&foreground)?;
+        if frame.opacity == f16::from_f32(2.0) {
+          foreground.multiply_alpha_f32(layer.opacity.to_f32());
+        } else {
+          foreground.multiply_alpha_f32(frame.opacity.to_f32());
         }
 
         batch_blend_with_in_place(
