@@ -94,6 +94,26 @@ impl ArgbColor {
     }
   }
 
+  /// Converts premultiplied RGB to straight RGB for RGBA image output.
+  pub(crate) fn to_straight_alpha(self) -> Self {
+    if self.a == 0 {
+      return Self::TRANSPARENT;
+    }
+
+    Self::new(
+      (f32::from(self.r) * 255. / f32::from(self.a))
+        .round()
+        .clamp(0., 255.) as u8,
+      (f32::from(self.g) * 255. / f32::from(self.a))
+        .round()
+        .clamp(0., 255.) as u8,
+      (f32::from(self.b) * 255. / f32::from(self.a))
+        .round()
+        .clamp(0., 255.) as u8,
+      self.a,
+    )
+  }
+
   pub fn multiply_alpha(&mut self, alpha: u8) {
     let a = (alpha as f32) / 255.;
 
@@ -101,10 +121,10 @@ impl ArgbColor {
   }
 
   pub fn multiply_alpha_f32(&mut self, alpha: f32) {
-    self.r = (self.r as f32 * alpha) as u8;
-    self.g = (self.g as f32 * alpha) as u8;
-    self.b = (self.b as f32 * alpha) as u8;
-    self.a = (self.a as f32 * alpha) as u8;
+    self.r = (self.r as f32 * alpha).round().clamp(0.0, 255.0) as u8;
+    self.g = (self.g as f32 * alpha).round().clamp(0.0, 255.0) as u8;
+    self.b = (self.b as f32 * alpha).round().clamp(0.0, 255.0) as u8;
+    self.a = (self.a as f32 * alpha).round().clamp(0.0, 255.0) as u8;
   }
 }
 
@@ -137,10 +157,10 @@ impl TryFrom<&[u8]> for ArgbColor {
 impl Blend for ArgbColor {
   fn from_color(c: msgw3c::color::C) -> Self {
     Self::new(
-      (c.r * 255.).clamp(0.0, 255.0) as u8,
-      (c.g * 255.).clamp(0.0, 255.0) as u8,
-      (c.b * 255.).clamp(0.0, 255.0) as u8,
-      (c.a * 255.).clamp(0.0, 255.0) as u8,
+      (c.r * 255.).round().clamp(0.0, 255.0) as u8,
+      (c.g * 255.).round().clamp(0.0, 255.0) as u8,
+      (c.b * 255.).round().clamp(0.0, 255.0) as u8,
+      (c.a * 255.).round().clamp(0.0, 255.0) as u8,
     )
   }
 

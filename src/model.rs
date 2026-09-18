@@ -3244,16 +3244,32 @@ impl<'a> Artwork {
     frame_index: usize,
     visibility: LayerVisibility,
   ) -> Result<Vec<u8>, ArtworkOperationError> {
-    let render_plan = RenderPlan::build(self, frame_index, visibility)?;
+    let composited_image = self.get_frame_image_inner(frame_index, visibility)?;
 
-    let pixel_len = (self.canvas_size.width as usize) * (self.canvas_size.height as usize);
-    let mut composited_image = vec![ArgbColor::TRANSPARENT; pixel_len];
-
-    render_plan.render_onto(&mut composited_image)?;
-
-    let data_size = pixel_len * 4;
+    let data_size = composited_image.len() * 4;
     let mut buf: Vec<u8> = vec![0b0; data_size];
     for (i, color) in composited_image.iter().enumerate() {
+      buf[i * 4] = color.r;
+      buf[i * 4 + 1] = color.g;
+      buf[i * 4 + 2] = color.b;
+      buf[i * 4 + 3] = color.a;
+    }
+
+    return Ok(buf);
+  }
+
+  /// Returns the image data for a specific frame as straight-alpha.
+  pub fn get_frame_image_as_straight_alpha(
+    &self,
+    frame_index: usize,
+    visibility: LayerVisibility,
+  ) -> Result<Vec<u8>, ArtworkOperationError> {
+    let composited_image = self.get_frame_image_inner(frame_index, visibility)?;
+
+    let data_size = composited_image.len() * 4;
+    let mut buf: Vec<u8> = vec![0b0; data_size];
+    for (i, color) in composited_image.iter().enumerate() {
+      let color = color.to_straight_alpha();
       buf[i * 4] = color.r;
       buf[i * 4 + 1] = color.g;
       buf[i * 4 + 2] = color.b;
@@ -3381,6 +3397,21 @@ impl<'a> Artwork {
         remaining_data: remaining_data.into(),
       },
     ))
+  }
+
+  fn get_frame_image_inner(
+    &self,
+    frame_index: usize,
+    visibility: LayerVisibility,
+  ) -> Result<Vec<ArgbColor>, ArtworkOperationError> {
+    let render_plan = RenderPlan::build(self, frame_index, visibility)?;
+
+    let pixel_len = (self.canvas_size.width as usize) * (self.canvas_size.height as usize);
+    let mut composited_image = vec![ArgbColor::TRANSPARENT; pixel_len];
+
+    render_plan.render_onto(&mut composited_image)?;
+
+    Ok(composited_image)
   }
 }
 
