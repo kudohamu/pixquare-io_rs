@@ -32,6 +32,7 @@ pub(crate) enum RenderPlan<'a> {
     has_cropping_masks: bool,
     clipping_masks: Vec<RenderPlan<'a>>,
     cropping_masks: Vec<RenderPlan<'a>>,
+    canvas_size: Size,
   },
   TilemapLayer {
     layer: &'a TilemapLayer,
@@ -148,6 +149,7 @@ impl<'a> RenderPlan<'a> {
             has_cropping_masks: !layer.cropping_masks.is_empty(),
             clipping_masks,
             cropping_masks,
+            canvas_size: artwork.canvas_size,
           };
           plans.push(plan);
         }
@@ -244,12 +246,13 @@ impl<'a> RenderPlan<'a> {
         has_cropping_masks,
         clipping_masks,
         cropping_masks,
+        canvas_size,
         ..
       } => {
         let mut foreground = content.colors.clone();
 
         for fx in &layer.fxs {
-          foreground = fx.apply(&foreground)?;
+          foreground = fx.apply(&foreground, canvas_size)?;
         }
 
         if *has_cropping_masks {

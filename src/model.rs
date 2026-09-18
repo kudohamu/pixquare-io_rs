@@ -1292,6 +1292,58 @@ pub struct FxPatternOverlayContent {
 }
 
 impl<'a> FxPatternOverlayContent {
+  pub(crate) fn apply(
+    &self,
+    source: &[ArgbColor],
+    canvas_size: &Size,
+  ) -> Result<Vec<ArgbColor>, ArtworkOperationError> {
+    if !self.enabled {
+      return Ok(source.into());
+    }
+    let mut overlay: Vec<ArgbColor> =
+      vec![ArgbColor::TRANSPARENT; canvas_size.width as usize * canvas_size.height as usize];
+
+    let repeat_count_x = (canvas_size.width).div_ceil(self.pattern_size.width) as usize;
+    let repeat_count_y = (canvas_size.height).div_ceil(self.pattern_size.height) as usize;
+
+    for repeat_y in 0..repeat_count_y {
+      let grid_y = repeat_y * self.pattern_size.height as usize;
+
+      for repeat_x in 0..repeat_count_x {
+        let grid_x = repeat_x * self.pattern_size.width as usize;
+
+        for (pixel_index, pattern_pixel) in self.patterns.iter().enumerate() {
+          let pattern_x = pixel_index as usize % self.pattern_size.width as usize;
+          let pattern_y = pixel_index as usize / self.pattern_size.width as usize;
+
+          if (grid_x + pattern_x >= canvas_size.width as usize)
+            || (grid_y + pattern_y >= canvas_size.height as usize)
+          {
+            continue;
+          }
+          let canvas_index = (grid_y + pattern_y) * canvas_size.width as usize + grid_x + pattern_x;
+
+          overlay[canvas_index] = *pattern_pixel;
+        }
+      }
+    }
+
+    for (index, s) in source.iter().enumerate() {
+      overlay[index].multiply_alpha_f32(self.opacity);
+      overlay[index].multiply_alpha(s.a);
+    }
+
+    let mut offscreen: Vec<ArgbColor> = source.into();
+    batch_blend_with_in_place(
+      &overlay,
+      &mut offscreen,
+      self.blend_mode.into(),
+      PorterDuff::SourceOver,
+    )?;
+
+    Ok(offscreen)
+  }
+
   fn parser(
     data_size: usize,
   ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
@@ -1389,9 +1441,11 @@ impl Fx {
   pub(crate) fn apply(
     &self,
     source: &[ArgbColor],
+    canvas_size: &Size,
   ) -> Result<Vec<ArgbColor>, ArtworkOperationError> {
     match self {
       Self::ColorOverlay(content) => content.apply(source),
+      Self::PatternOverlay(content) => content.apply(source, canvas_size),
       _ => Ok(source.into()),
     }
   }
