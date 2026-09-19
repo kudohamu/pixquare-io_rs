@@ -24,7 +24,7 @@ use crate::{
   },
   error::{ArtworkOperationError, MarshalError, PMResult, PPResult, ParseError},
   marshaler::Marshal,
-  morphology::{inside_gradient, outside_gradient},
+  morphology::{hit_or_miss, inside_gradient, outside_gradient},
   primitive_type::{DumbString, OptionSet, TypeN},
   utility_type::{LayerVisibility, RenderPlan},
   writer::{CountingWrite, CountingWriter},
@@ -1293,6 +1293,37 @@ pub struct FxAntiAliasingContent {
 }
 
 impl<'a> FxAntiAliasingContent {
+  pub(crate) fn apply(
+    &self,
+    source: &[ArgbColor],
+    canvas_size: &Size,
+  ) -> Result<Vec<ArgbColor>, ArtworkOperationError> {
+    if !self.enabled {
+      return Ok(source.into());
+    }
+    let mut aliasing: Vec<ArgbColor> =
+      vec![ArgbColor::TRANSPARENT; canvas_size.width as usize * canvas_size.height as usize];
+
+    hit_or_miss(
+      source,
+      &mut aliasing,
+      canvas_size,
+      &self.corners,
+      self.intensity,
+    );
+
+    let mut offscreen: Vec<ArgbColor> = source.into();
+
+    batch_blend_with_in_place(
+      &aliasing,
+      &mut offscreen,
+      BlendMode::Normal.into(),
+      PorterDuff::SourceOver,
+    )?;
+
+    Ok(offscreen)
+  }
+
   fn parser(
     data_size: usize,
   ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
@@ -1498,8 +1529,8 @@ impl Fx {
     match self {
       Self::ColorOverlay(content) => content.apply(source),
       Self::Outline(content) => content.apply(source, canvas_size),
+      Self::AntiAliasing(content) => content.apply(source, canvas_size),
       Self::PatternOverlay(content) => content.apply(source, canvas_size),
-      _ => Ok(source.into()),
     }
   }
 }

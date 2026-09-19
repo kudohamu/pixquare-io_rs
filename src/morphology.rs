@@ -42,6 +42,61 @@ pub fn inside_gradient(
   }
 }
 
+pub fn hit_or_miss(
+  source: &[ArgbColor],
+  target: &mut [ArgbColor],
+  canvas_size: &Size,
+  corners: &[Corners],
+  intensity: f32,
+) {
+  let mut bin = vec![ArgbColor::TRANSPARENT; target.len()];
+  binarize(source, &mut bin, &[]);
+
+  for (index, pixel) in bin.iter().enumerate() {
+    if pixel.a != 0 {
+      continue;
+    }
+    if corners.len() == 0 {
+      continue;
+    }
+    let coordinates: Vec<Vec<(usize, usize)>> = corners
+      .into_iter()
+      .filter_map(|corner| check_corner_all_black(&bin, canvas_size, index, corner))
+      .collect();
+
+    if coordinates.is_empty() {
+      continue;
+    }
+
+    let mut coordinates: Vec<_> = coordinates.iter().flatten().collect();
+    coordinates.sort_unstable();
+    coordinates.dedup();
+
+    let mut r = 0;
+    let mut g = 0;
+    let mut b = 0;
+    let mut a = 0;
+
+    for coordinate in &coordinates {
+      let index = coordinate.1 * canvas_size.width as usize + coordinate.0;
+      let color = source[index];
+
+      r += color.r as usize;
+      g += color.g as usize;
+      b += color.b as usize;
+      a += color.a as usize;
+    }
+
+    target[index] = ArgbColor::new(
+      (r / coordinates.len()) as u8,
+      (g / coordinates.len()) as u8,
+      (b / coordinates.len()) as u8,
+      (a / coordinates.len()) as u8,
+    );
+    target[index].multiply_alpha_f32(intensity);
+  }
+}
+
 pub fn binarize(source: &[ArgbColor], target: &mut [ArgbColor], ignore_colors: &[ArgbColor]) {
   for (index, pixel) in source.iter().enumerate() {
     if pixel.a != 0
@@ -151,6 +206,54 @@ fn is_shift_source_black(
   let source_index = source_y * width + source_x;
 
   source[source_index].a != 0
+}
+
+fn check_corner_all_black(
+  source: &[ArgbColor],
+  canvas_size: &Size,
+  source_index: usize,
+  corners: &Corners,
+) -> Option<Vec<(usize, usize)>> {
+  let width = canvas_size.width as usize;
+  let height = canvas_size.height as usize;
+  let source_x = source_index % width;
+  let source_y = source_index / width;
+  let offsets = get_offsets_from_corners(corners);
+
+  offsets
+    .into_iter()
+    .map(|(offset_x, offset_y)| {
+      let target_x = if offset_x >= 0 {
+        Some(source_x + offset_x as usize)
+      } else {
+        source_x.checked_sub(offset_x.abs() as usize)
+      };
+      let Some(target_x) = target_x else {
+        return None;
+      };
+      if target_x > width - 1 {
+        return None;
+      }
+      let target_y = if offset_y >= 0 {
+        Some(source_y + offset_y as usize)
+      } else {
+        source_y.checked_sub(offset_y.abs() as usize)
+      };
+      let Some(target_y) = target_y else {
+        return None;
+      };
+      if target_y > height - 1 {
+        return None;
+      }
+
+      let target_index = target_y * width + target_x;
+      if source[target_index].a == 0 {
+        return None;
+      }
+
+      Some((target_x, target_y))
+    })
+    .collect()
 }
 
 #[cfg(test)]
@@ -327,5 +430,107 @@ mod tests {
 
     assert_only_colored_at(&outside, &[10, 12], outline);
     assert_only_colored_at(&inside, &[11], outline);
+  }
+
+  #[test]
+  fn test_hit_or_miss_combines_neighbor_colors_and_applies_intensity() {
+    let size = Size::new(5, 5);
+    let mut source = vec![ArgbColor::TRANSPARENT; 25];
+    source[7] = ArgbColor::new(200, 40, 80, 255);
+    source[11] = ArgbColor::new(40, 120, 200, 255);
+    let corners = [Corners {
+      top: true,
+      left: true,
+      ..Default::default()
+    }];
+    let mut target = vec![ArgbColor::TRANSPARENT; 25];
+
+    hit_or_miss(&source, &mut target, &size, &corners, 0.5);
+
+    assert_only_colored_at(&target, &[12], ArgbColor::new(60, 40, 70, 128));
+  }
+
+  #[test]
+  fn test_hit_or_miss_requires_every_neighbor_in_a_pattern() {
+    let size = Size::new(5, 5);
+    let mut source = vec![ArgbColor::TRANSPARENT; 25];
+    source[7] = ArgbColor::new(200, 40, 80, 255);
+    let corners = [Corners {
+      top: true,
+      left: true,
+      ..Default::default()
+    }];
+    let mut target = vec![ArgbColor::TRANSPARENT; 25];
+
+    hit_or_miss(&source, &mut target, &size, &corners, 1.0);
+
+    assert_only_colored_at(&target, &[], ArgbColor::TRANSPARENT);
+  }
+
+  #[test]
+  fn test_hit_or_miss_accepts_any_matching_pattern() {
+    let size = Size::new(5, 5);
+    let mut source = vec![ArgbColor::TRANSPARENT; 25];
+    source[7] = ArgbColor::new(200, 40, 80, 255);
+    source[11] = ArgbColor::new(40, 120, 200, 255);
+    let corners = [
+      Corners {
+        top: true,
+        bottom: true,
+        ..Default::default()
+      },
+      Corners {
+        top: true,
+        left: true,
+        ..Default::default()
+      },
+    ];
+    let mut target = vec![ArgbColor::TRANSPARENT; 25];
+
+    hit_or_miss(&source, &mut target, &size, &corners, 1.0);
+
+    assert_only_colored_at(&target, &[12], ArgbColor::new(120, 80, 140, 255));
+  }
+
+  #[test]
+  fn test_hit_or_miss_deduplicates_neighbors_shared_by_matching_patterns() {
+    let size = Size::new(5, 5);
+    let mut source = vec![ArgbColor::TRANSPARENT; 25];
+    source[6] = ArgbColor::new(0, 0, 240, 255);
+    source[7] = ArgbColor::new(240, 0, 0, 255);
+    source[11] = ArgbColor::new(0, 240, 0, 255);
+    let corners = [
+      Corners {
+        top: true,
+        left: true,
+        ..Default::default()
+      },
+      Corners {
+        top_left: true,
+        top: true,
+        ..Default::default()
+      },
+    ];
+    let mut target = vec![ArgbColor::TRANSPARENT; 25];
+
+    hit_or_miss(&source, &mut target, &size, &corners, 1.0);
+
+    assert_only_colored_at(&target, &[12], ArgbColor::new(80, 80, 80, 255));
+  }
+
+  #[test]
+  fn test_hit_or_miss_does_not_wrap_at_canvas_edge() {
+    let size = Size::new(3, 3);
+    let mut source = vec![ArgbColor::TRANSPARENT; 9];
+    source[2] = ArgbColor::new(200, 40, 80, 255);
+    let corners = [Corners {
+      left: true,
+      ..Default::default()
+    }];
+    let mut target = vec![ArgbColor::TRANSPARENT; 9];
+
+    hit_or_miss(&source, &mut target, &size, &corners, 1.0);
+
+    assert_only_colored_at(&target, &[], ArgbColor::TRANSPARENT);
   }
 }
