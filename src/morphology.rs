@@ -11,13 +11,13 @@ pub fn outside_gradient(
   let mut bin = vec![ArgbColor::TRANSPARENT; target.len()];
   binarize(source, &mut bin, ignore_colors);
 
-  let mut dialeted = vec![ArgbColor::TRANSPARENT; target.len()];
-  dilate(&bin, &mut dialeted, canvas_size, corners);
+  let mut dilated = vec![ArgbColor::TRANSPARENT; target.len()];
+  dilate(&bin, &mut dilated, canvas_size, corners);
 
   debug_assert_eq!(bin.len(), target.len());
 
   for (index, b) in bin.iter().enumerate() {
-    if dialeted[index].a == 0 {
+    if dilated[index].a == 0 {
       continue;
     }
     if b.a == 0 {
@@ -39,12 +39,12 @@ pub fn inside_gradient(
   let mut bin = vec![ArgbColor::TRANSPARENT; target.len()];
   binarize(source, &mut bin, ignore_colors);
 
-  let mut erosed = vec![ArgbColor::TRANSPARENT; target.len()];
-  erose(&bin, &mut erosed, canvas_size, corners);
+  let mut eroded = vec![ArgbColor::TRANSPARENT; target.len()];
+  erode(&bin, &mut eroded, canvas_size, corners);
 
   debug_assert_eq!(bin.len(), target.len());
 
-  for (index, e) in erosed.iter().enumerate() {
+  for (index, e) in eroded.iter().enumerate() {
     if bin[index].a == 0 {
       continue;
     }
@@ -56,7 +56,7 @@ pub fn inside_gradient(
   }
 }
 
-pub fn erose(
+pub fn erode(
   source: &[ArgbColor],
   target: &mut [ArgbColor],
   canvas_size: &Size,
