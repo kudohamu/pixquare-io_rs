@@ -3,6 +3,7 @@ pub mod composite_type;
 pub mod error;
 mod marshaler;
 pub mod model;
+mod morphology;
 pub mod primitive_type;
 pub mod utility_type;
 mod writer;

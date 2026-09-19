@@ -24,6 +24,7 @@ use crate::{
   },
   error::{ArtworkOperationError, MarshalError, PMResult, PPResult, ParseError},
   marshaler::Marshal,
+  morphology::{inside_gradient, outside_gradient},
   primitive_type::{DumbString, OptionSet, TypeN},
   utility_type::{LayerVisibility, RenderPlan},
   writer::{CountingWrite, CountingWriter},
@@ -1176,6 +1177,57 @@ pub struct FxOutlineContent {
 }
 
 impl<'a> FxOutlineContent {
+  pub(crate) fn apply(
+    &self,
+    source: &[ArgbColor],
+    canvas_size: &Size,
+  ) -> Result<Vec<ArgbColor>, ArtworkOperationError> {
+    if !self.enabled {
+      return Ok(source.into());
+    }
+    let mut overlay: Vec<ArgbColor> =
+      vec![ArgbColor::TRANSPARENT; canvas_size.width as usize * canvas_size.height as usize];
+
+    if self.is_outside {
+      outside_gradient(
+        source,
+        &mut overlay,
+        canvas_size,
+        &self.corners,
+        &self.color,
+        &self.ignored_colors,
+      );
+    } else {
+      inside_gradient(
+        source,
+        &mut overlay,
+        canvas_size,
+        &self.corners,
+        &self.color,
+        &self.ignored_colors,
+      );
+    }
+
+    let mut offscreen: Vec<ArgbColor> = source.into();
+
+    if self.is_water_color_on {
+      batch_blend_with_in_place(
+        &overlay,
+        &mut offscreen,
+        BlendMode::Normal.into(),
+        PorterDuff::SourceOver,
+      )?;
+    } else {
+      for (index, pixel) in overlay.iter().enumerate() {
+        if pixel.a != 0 {
+          offscreen[index] = *pixel;
+        }
+      }
+    }
+
+    Ok(offscreen)
+  }
+
   fn parser(
     data_size: usize,
   ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
@@ -1445,6 +1497,7 @@ impl Fx {
   ) -> Result<Vec<ArgbColor>, ArtworkOperationError> {
     match self {
       Self::ColorOverlay(content) => content.apply(source),
+      Self::Outline(content) => content.apply(source, canvas_size),
       Self::PatternOverlay(content) => content.apply(source, canvas_size),
       _ => Ok(source.into()),
     }
