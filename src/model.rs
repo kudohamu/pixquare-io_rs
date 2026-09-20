@@ -23,6 +23,7 @@ use crate::{
     Size, SymmetryType,
   },
   error::{ArtworkOperationError, MarshalError, PMResult, PPResult, ParseError},
+  interpolation::smoothstep,
   marshaler::Marshal,
   morphology::{hit_or_miss, inside_gradient, outside_gradient},
   primitive_type::{DumbString, OptionSet, TypeN},
@@ -2777,6 +2778,46 @@ pub struct PostProcessorVignetteContent {
 }
 
 impl<'a> PostProcessorVignetteContent {
+  pub(crate) fn apply(
+    &self,
+    target: &mut [ArgbColor],
+    canvas_size: &Size,
+  ) -> Result<(), ArtworkOperationError> {
+    if !self.enabled {
+      return Ok(());
+    }
+
+    let mut overlay = vec![self.color; canvas_size.width as usize * canvas_size.height as usize];
+    let width = canvas_size.width as usize;
+    let height = canvas_size.height as usize;
+
+    let center_x = (width - 1) as f64 / 2.;
+    let center_y = (height - 1) as f64 / 2.;
+    let max_d = ((width as f64).powi(2) + (height as f64).powi(2)).sqrt() / 2.;
+
+    for y in 0..height {
+      for x in 0..width {
+        let d = ((x as f64 - center_x).powi(2) + (y as f64 - center_y).powi(2)).sqrt();
+        let normalized_d = d / max_d;
+
+        let value = smoothstep(normalized_d, 0.1, 1.3);
+        let amount = value * 1.;
+
+        let overlay_index = y * width + x;
+        overlay[overlay_index].multiply_alpha_f32(amount as f32);
+      }
+    }
+
+    batch_blend_with_in_place(
+      &overlay,
+      target,
+      BlendMode::Normal.into(),
+      PorterDuff::SourceAtop,
+    )?;
+
+    Ok(())
+  }
+
   fn parser(
     data_size: usize,
   ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
@@ -2947,6 +2988,17 @@ pub enum PostProcessor {
 }
 
 impl PostProcessor {
+  pub(crate) fn apply(
+    &self,
+    target: &mut [ArgbColor],
+    canvas_size: &Size,
+  ) -> Result<(), ArtworkOperationError> {
+    match self {
+      Self::Vignette(content) => content.apply(target, canvas_size),
+      _ => Ok(()),
+    }
+  }
+
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = PostProcessorHeader::parse(input)?;
 
@@ -3548,6 +3600,10 @@ impl<'a> Artwork {
     let mut composited_image = vec![ArgbColor::TRANSPARENT; pixel_len];
 
     render_plan.render_onto(&mut composited_image)?;
+
+    for ps in &self.post_processors {
+      ps.apply(&mut composited_image, &self.canvas_size)?;
+    }
 
     Ok(composited_image)
   }
