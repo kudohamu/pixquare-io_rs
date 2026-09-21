@@ -27,6 +27,7 @@ use crate::{
   marshaler::Marshal,
   morphology::{hit_or_miss, inside_gradient, outside_gradient},
   primitive_type::{DumbString, OptionSet, TypeN},
+  processing::{apply_gaussian_blur, create_bloom_source},
   utility_type::{LayerVisibility, RenderPlan},
   writer::{CountingWrite, CountingWriter},
 };
@@ -2877,6 +2878,43 @@ pub struct PostProcessorBloomContent {
 }
 
 impl<'a> PostProcessorBloomContent {
+  pub(crate) fn apply(
+    &self,
+    target: &mut [ArgbColor],
+    canvas_size: &Size,
+  ) -> Result<(), ArtworkOperationError> {
+    if !self.enabled {
+      return Ok(());
+    }
+
+    let bloom_source = create_bloom_source(target, self.threshold);
+
+    let min_dimension = canvas_size.width.min(canvas_size.height) as f64;
+    let influence_radius = self.radius * min_dimension;
+    let sigma = influence_radius / 3.0;
+    let blurred_colors = apply_gaussian_blur(&bloom_source, canvas_size, sigma);
+
+    let intensity_alpha = (self.intensity.clamp(0.0, 1.0) * 255.0).round() as u8;
+    let blurred: Vec<ArgbColor> = blurred_colors
+      .iter()
+      .map(|color| {
+        let r = (color.r.clamp(0.0, 1.0) * 255.0).round() as u8;
+        let g = (color.g.clamp(0.0, 1.0) * 255.0).round() as u8;
+        let b = (color.b.clamp(0.0, 1.0) * 255.0).round() as u8;
+        ArgbColor::from_straight_alpha(r, g, b, intensity_alpha)
+      })
+      .collect();
+
+    batch_blend_with_in_place(
+      &blurred,
+      target,
+      BlendMode::ColorDodge.into(),
+      PorterDuff::SourceAtop,
+    )?;
+
+    Ok(())
+  }
+
   fn parser(
     data_size: usize,
   ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
@@ -2995,6 +3033,7 @@ impl PostProcessor {
   ) -> Result<(), ArtworkOperationError> {
     match self {
       Self::Vignette(content) => content.apply(target, canvas_size),
+      Self::Bloom(content) => content.apply(target, canvas_size),
       _ => Ok(()),
     }
   }

@@ -6,5 +6,6 @@ mod marshaler;
 pub mod model;
 mod morphology;
 pub mod primitive_type;
+mod processing;
 pub mod utility_type;
 mod writer;
