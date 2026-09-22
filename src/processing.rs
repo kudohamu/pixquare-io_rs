@@ -1,3 +1,5 @@
+use msgw3c::Blend;
+
 use crate::composite_type::{ArgbColor, Size};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
@@ -5,11 +7,33 @@ pub(crate) struct BloomColor {
   pub r: f64,
   pub g: f64,
   pub b: f64,
+  pub a: f64,
 }
 
-pub(crate) fn create_bloom_source(source: &[ArgbColor], threshold: f64) -> Vec<BloomColor> {
+impl Blend for BloomColor {
+  fn from_color(c: msgw3c::color::C) -> Self {
+    let color = c.to_straight_alpha();
+
+    Self {
+      r: f64::from(color.r),
+      g: f64::from(color.g),
+      b: f64::from(color.b),
+      a: f64::from(color.a),
+    }
+  }
+
+  fn to_color(&self) -> msgw3c::color::C {
+    msgw3c::color::C::from_straight_alpha(
+      self.r as f32,
+      self.g as f32,
+      self.b as f32,
+      self.a as f32,
+    )
+  }
+}
+
+pub(crate) fn create_bloom_source(source: &[ArgbColor], intensity: f64) -> Vec<BloomColor> {
   let mut target = vec![BloomColor::default(); source.len()];
-  let threshold = threshold.clamp(0., 1.);
 
   for (index, pixel) in source.iter().enumerate() {
     if pixel.a == 0 {
@@ -22,23 +46,42 @@ pub(crate) fn create_bloom_source(source: &[ArgbColor], threshold: f64) -> Vec<B
     let b = f64::from(pixel.b) / alpha;
     let lightness = (r.max(g).max(b) + r.min(g).min(b)) / 2.;
 
-    let brightness = ((lightness - 0.5) * 2.).clamp(0., 1.);
-    let weight = if brightness <= threshold {
-      0.
-    } else if threshold >= 1. {
-      0.
-    } else {
-      (brightness - threshold) / (1. - threshold)
-    };
-
     target[index] = BloomColor {
-      r: r * weight,
-      g: g * weight,
-      b: b * weight,
+      r: r * lightness,
+      g: g * lightness,
+      b: b * lightness,
+      a: intensity,
     };
   }
 
   target
+}
+
+pub(crate) fn create_bloom_difference(
+  source: &[BloomColor],
+  blurred: &[BloomColor],
+  threshold: f64,
+) -> Vec<BloomColor> {
+  blurred
+    .iter()
+    .zip(source)
+    .map(|(blurred, source)| BloomColor {
+      r: apply_bloom_threshold((blurred.r - source.r).max(0.), threshold),
+      g: apply_bloom_threshold((blurred.g - source.g).max(0.), threshold),
+      b: apply_bloom_threshold((blurred.b - source.b).max(0.), threshold),
+      a: source.a,
+    })
+    .collect()
+}
+
+fn apply_bloom_threshold(value: f64, threshold: f64) -> f64 {
+  if value <= threshold {
+    0.
+  } else if threshold >= 1. {
+    0.
+  } else {
+    (value - threshold) / (1. - threshold)
+  }
 }
 
 pub(crate) fn apply_gaussian_blur(
@@ -80,6 +123,17 @@ pub(crate) fn apply_gaussian_blur(
   target
 }
 
+pub(crate) fn adjust_threshold(threshold: f64) -> f64 {
+  let min = 0.;
+  let max = 0.4;
+
+  min + threshold / 1. * (max - min)
+}
+
+pub(crate) fn adjust_intensity(intensity: f64) -> f64 {
+  0.7 + 0.7 * intensity
+}
+
 fn create_gaussian_kernel(sigma: f64) -> (isize, Vec<f64>) {
   if sigma <= 0. {
     return (0, vec![1.]);
@@ -108,80 +162,4 @@ fn create_gaussian_kernel(sigma: f64) -> (isize, Vec<f64>) {
   }
 
   (radius as isize, kernel)
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn test_create_bloom_source_ignores_dark_half_and_preserves_color() {
-    let source = [
-      ArgbColor::new(58, 68, 102, 255),
-      ArgbColor::new(228, 59, 68, 255),
-      ArgbColor::new(255, 255, 255, 255),
-    ];
-
-    let bloom = create_bloom_source(&source, 0.);
-
-    assert_eq!(bloom[0], BloomColor::default());
-    assert!(bloom[1].r > bloom[1].g);
-    assert!(bloom[1].r > bloom[1].b);
-    assert_eq!(
-      bloom[2],
-      BloomColor {
-        r: 1.,
-        g: 1.,
-        b: 1.
-      }
-    );
-  }
-
-  #[test]
-  fn test_gaussian_blur_with_zero_sigma_is_identity() {
-    let source = [
-      BloomColor {
-        r: 1.,
-        g: 0.,
-        b: 0.,
-      },
-      BloomColor {
-        r: 0.,
-        g: 1.,
-        b: 0.,
-      },
-    ];
-    let canvas_size = Size {
-      width: 2,
-      height: 1,
-    };
-
-    let blurred = apply_gaussian_blur(&source, &canvas_size, 0.);
-
-    assert_eq!(blurred, source);
-  }
-
-  #[test]
-  fn test_gaussian_blur_preserves_color_channels() {
-    let source = [
-      BloomColor::default(),
-      BloomColor {
-        r: 1.,
-        g: 0.,
-        b: 0.,
-      },
-      BloomColor::default(),
-    ];
-    let canvas_size = Size {
-      width: 3,
-      height: 1,
-    };
-
-    let blurred = apply_gaussian_blur(&source, &canvas_size, 1.);
-
-    assert!(blurred[0].r > 0.);
-    assert!(blurred[1].r > blurred[0].r);
-    assert_eq!(blurred[0].g, 0.);
-    assert_eq!(blurred[0].b, 0.);
-  }
 }

@@ -27,7 +27,10 @@ use crate::{
   marshaler::Marshal,
   morphology::{hit_or_miss, inside_gradient, outside_gradient},
   primitive_type::{DumbString, OptionSet, TypeN},
-  processing::{apply_gaussian_blur, create_bloom_source},
+  processing::{
+    adjust_intensity, adjust_threshold, apply_gaussian_blur, create_bloom_difference,
+    create_bloom_source,
+  },
   utility_type::{LayerVisibility, RenderPlan},
   writer::{CountingWrite, CountingWriter},
 };
@@ -2887,23 +2890,16 @@ impl<'a> PostProcessorBloomContent {
       return Ok(());
     }
 
-    let bloom_source = create_bloom_source(target, self.threshold);
+    let intensity = adjust_intensity(self.intensity);
+    let threshold = adjust_threshold(self.threshold);
+    let bloom_source = create_bloom_source(target, intensity);
 
     let min_dimension = canvas_size.width.min(canvas_size.height) as f64;
     let influence_radius = self.radius * min_dimension;
-    let sigma = influence_radius / 3.0;
+    let sigma = (influence_radius / 3_f64.sqrt()).max(0.55);
     let blurred_colors = apply_gaussian_blur(&bloom_source, canvas_size, sigma);
 
-    let intensity_alpha = (self.intensity.clamp(0.0, 1.0) * 255.0).round() as u8;
-    let blurred: Vec<ArgbColor> = blurred_colors
-      .iter()
-      .map(|color| {
-        let r = (color.r.clamp(0.0, 1.0) * 255.0).round() as u8;
-        let g = (color.g.clamp(0.0, 1.0) * 255.0).round() as u8;
-        let b = (color.b.clamp(0.0, 1.0) * 255.0).round() as u8;
-        ArgbColor::from_straight_alpha(r, g, b, intensity_alpha)
-      })
-      .collect();
+    let blurred = create_bloom_difference(&bloom_source, &blurred_colors, threshold);
 
     batch_blend_with_in_place(
       &blurred,
