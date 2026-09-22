@@ -2805,7 +2805,7 @@ impl<'a> PostProcessorVignetteContent {
         let normalized_d = d / max_d;
 
         let value = smoothstep(normalized_d, 0.1, 1.3);
-        let amount = value * 1.;
+        let amount = value * self.intensity;
 
         let overlay_index = y * width + x;
         overlay[overlay_index].multiply_alpha_f32(amount as f32);
