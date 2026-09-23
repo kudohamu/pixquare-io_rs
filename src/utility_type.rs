@@ -85,15 +85,27 @@ impl<'a> RenderPlan<'a> {
 
           let mut child_plans =
             Self::build_children(&group.child_entries, artwork, frame_index, visibility)?;
-          child_plans.sort_by(|a, b| a.order_index().cmp(&b.order_index()));
+          child_plans.sort_by(|a, b| {
+            a.primary_order_index()
+              .cmp(&b.primary_order_index())
+              .then(a.secondary_order_index().cmp(&b.secondary_order_index()))
+          });
 
           let mut clipping_masks =
             Self::build_children(&group.clipping_masks, artwork, frame_index, visibility)?;
-          clipping_masks.sort_by(|a, b| a.order_index().cmp(&b.order_index()));
+          clipping_masks.sort_by(|a, b| {
+            a.primary_order_index()
+              .cmp(&b.primary_order_index())
+              .then(a.secondary_order_index().cmp(&b.secondary_order_index()))
+          });
 
           let mut cropping_masks =
             Self::build_children(&group.cropping_masks, artwork, frame_index, visibility)?;
-          cropping_masks.sort_by(|a, b| a.order_index().cmp(&b.order_index()));
+          cropping_masks.sort_by(|a, b| {
+            a.primary_order_index()
+              .cmp(&b.primary_order_index())
+              .then(a.secondary_order_index().cmp(&b.secondary_order_index()))
+          });
 
           let plan = RenderPlan::Group {
             opacity: group.opacity.into(),
@@ -134,11 +146,19 @@ impl<'a> RenderPlan<'a> {
 
           let mut clipping_masks =
             Self::build_children(&layer.clipping_masks, artwork, frame_index, visibility)?;
-          clipping_masks.sort_by(|a, b| a.order_index().cmp(&b.order_index()));
+          clipping_masks.sort_by(|a, b| {
+            a.primary_order_index()
+              .cmp(&b.primary_order_index())
+              .then(a.secondary_order_index().cmp(&b.secondary_order_index()))
+          });
 
           let mut cropping_masks =
             Self::build_children(&layer.cropping_masks, artwork, frame_index, visibility)?;
-          cropping_masks.sort_by(|a, b| a.order_index().cmp(&b.order_index()));
+          cropping_masks.sort_by(|a, b| {
+            a.primary_order_index()
+              .cmp(&b.primary_order_index())
+              .then(a.secondary_order_index().cmp(&b.secondary_order_index()))
+          });
 
           let plan = RenderPlan::RegularLayer {
             layer,
@@ -203,7 +223,11 @@ impl<'a> RenderPlan<'a> {
       }
     }
 
-    plans.sort_by(|a, b| a.order_index().cmp(&b.order_index()));
+    plans.sort_by(|a, b| {
+      a.primary_order_index()
+        .cmp(&b.primary_order_index())
+        .then(a.secondary_order_index().cmp(&b.secondary_order_index()))
+    });
     Ok(plans)
   }
 
@@ -332,27 +356,31 @@ impl<'a> RenderPlan<'a> {
     }
   }
 
-  fn order_index(&self) -> i16 {
+  fn primary_order_index(&self) -> i16 {
     match self {
-      Self::Group { base_index, .. } => (*base_index) as i16,
-      Self::RegularLayer {
-        frame, base_index, ..
-      } => {
+      Self::Group { .. } => 0,
+      Self::RegularLayer { frame, .. } => {
         if frame.z_index == 0 {
-          (*base_index) as i16
+          0
         } else {
           frame.z_index
         }
       }
-      Self::TilemapLayer {
-        frame, base_index, ..
-      } => {
+      Self::TilemapLayer { frame, .. } => {
         if frame.z_index == 0 {
-          (*base_index) as i16
+          0
         } else {
           frame.z_index
         }
       }
+    }
+  }
+
+  fn secondary_order_index(&self) -> i16 {
+    match self {
+      Self::Group { base_index, .. } => *base_index as i16,
+      Self::RegularLayer { base_index, .. } => *base_index as i16,
+      Self::TilemapLayer { base_index, .. } => *base_index as i16,
     }
   }
 
