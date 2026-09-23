@@ -29,6 +29,8 @@ pub enum ParseError<I> {
   InvalidPaletteOrganizationType,
   /// Unknown value of animation direction.
   InvalidAnimationDirection,
+  /// Invalid byte sequence for the color depth.
+  InvalidColorData,
   /// Unknown value of color depth.
   InvalidColorDepth,
   /// Unknown value of symmetry line.
@@ -55,6 +57,9 @@ impl<I> Display for ParseError<I> {
         write!(f, "unknown value of PaletteOrganization Type")
       }
       Self::InvalidAnimationDirection => write!(f, "unknown value of animation direction"),
+      Self::InvalidColorData => {
+        write!(f, "failed to parse binary of color data")
+      }
       Self::InvalidColorDepth => write!(f, "unknown value of color depth"),
       Self::InvalidSymmetryLine => write!(f, "unknown value of symmetry line"),
       Self::InvalidUtf8Error(e) => write!(f, "invalid UTF-8 error: {e}"),
@@ -148,6 +153,7 @@ pub enum ArtworkOperationError {
   FrameIndexOutOfBounds((usize, usize)),
   GroupNotFound(String),
   InsufficientBufferSize,
+  InvalidColorData,
   LayerNotFound(String),
   Msgw3c(msgw3c::error::Error),
   TilemapLayerNotFound(String),
@@ -179,6 +185,9 @@ impl Display for ArtworkOperationError {
       }
       Self::InsufficientBufferSize => {
         write!(f, "the buffer size is insufficient for the image size")
+      }
+      Self::InvalidColorData => {
+        write!(f, "failed to parse binary of color data")
       }
       Self::LayerNotFound(id) => {
         write!(f, "layer is not found (id: {})", id)

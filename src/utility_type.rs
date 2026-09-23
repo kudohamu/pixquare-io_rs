@@ -273,7 +273,7 @@ impl<'a> RenderPlan<'a> {
         canvas_size,
         ..
       } => {
-        let mut foreground = content.colors.clone();
+        let mut foreground = content._image.clone();
 
         for fx in &layer.fxs {
           foreground = fx.apply(&foreground, canvas_size)?;
@@ -324,7 +324,7 @@ impl<'a> RenderPlan<'a> {
           let grid_x = grid_index % grid_width;
           let grid_y = grid_index / grid_width;
 
-          let tile_data = &tileset.tile_images[tile_index as usize];
+          let tile_data = &tileset._tile_images[tile_index as usize];
 
           for tile_pixel_index in 0..tile_data.len() {
             let tile_x = tile_pixel_index % content.tile_size.width as usize;

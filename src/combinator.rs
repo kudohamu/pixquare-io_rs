@@ -6,7 +6,7 @@ use nom::{
   Parser,
   bytes::complete::take,
   combinator::{map, map_res},
-  multi::{count, many0},
+  multi::count,
   number::complete::{le_i32, le_u8, le_u16, le_u32, le_u64},
 };
 
@@ -107,10 +107,10 @@ pub fn argb_color(input: &[u8]) -> PPResult<&[u8], ArgbColor> {
   Ok((input, ArgbColor { r, g, b, a }))
 }
 
-/// Combinator for compressed argb colors ([ArgbColor]).
-pub fn compressed_colors<'a>(
+/// Combinator for compressed argb colors ([Byte]).
+pub fn compressed_color_bytes<'a>(
   compressed_len: usize,
-) -> impl Parser<&'a [u8], Output = Vec<ArgbColor>, Error = ParseError<&'a [u8]>> + Clone {
+) -> impl Parser<&'a [u8], Output = Vec<u8>, Error = ParseError<&'a [u8]>> + Clone {
   move |input: &'a [u8]| {
     let (remaining_input, compressed_data) = take(compressed_len)(input)?;
     let deflate_data = compressed_data
@@ -123,20 +123,7 @@ pub fn compressed_colors<'a>(
       .read_to_end(&mut decompressed_bytes)
       .map_err(|_e| nom::Err::Error(ParseError::InvalidZlibData))?;
 
-    let (_remaining_decompressed, colors) =
-      many0(argb_color)
-        .parse(&decompressed_bytes)
-        .map_err(|e| match e {
-          nom::Err::Error(ParseError::Nom(_, kind)) => {
-            nom::Err::Error(ParseError::Nom(input, kind))
-          }
-          nom::Err::Failure(ParseError::Nom(_, kind)) => {
-            nom::Err::Failure(ParseError::Nom(input, kind))
-          }
-          _ => nom::Err::Failure(ParseError::InvalidZlibData),
-        })?;
-
-    Ok((remaining_input, colors))
+    Ok((remaining_input, decompressed_bytes))
   }
 }
 

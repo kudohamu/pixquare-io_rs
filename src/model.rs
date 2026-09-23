@@ -14,8 +14,8 @@ use nom::{
 
 use crate::{
   combinator::{
-    argb_color, array_type, blend_mode, bool, compressed_colors, corners, dumb_string, float16,
-    option_set_u8, rect, size, string, type_n,
+    argb_color, array_type, blend_mode, bool, compressed_color_bytes, corners, dumb_string,
+    float16, option_set_u8, rect, size, string, type_n,
   },
   composite_type::{
     AnimationDirection, ArgbColor, BlendMode, ColorDepth, Corners, CustomDataType, EntryType,
@@ -230,25 +230,67 @@ impl Marshal for FrameContentHeader {
 #[derive(Debug, Clone)]
 pub struct FrameContent {
   pub id: String,
-  pub colors: Vec<ArgbColor>,
+  pub color_bytes: Vec<u8>,
   remaining_data: Vec<u8>,
+  pub _image: Vec<ArgbColor>,
 }
 
 impl FrameContent {
+  /// Refresh _image data from current color_bytes.
+  pub(crate) fn refresh_image(
+    &mut self,
+    color_depth: ColorDepth,
+    palette: &[ArgbColor],
+  ) -> Result<(), ArtworkOperationError> {
+    match color_depth {
+      ColorDepth::Rgb => {
+        let (_remaining_decompressed, image) = many0(argb_color)
+          .parse(&self.color_bytes)
+          .map_err(|_e| ArtworkOperationError::InvalidColorData)?;
+
+        self._image = image;
+      }
+      ColorDepth::Indexed => {
+        let image: Result<Vec<ArgbColor>, ArtworkOperationError> = self
+          .color_bytes
+          .iter()
+          .copied()
+          .map(|index| {
+            if index == u8::MAX {
+              Ok(ArgbColor::TRANSPARENT)
+            } else {
+              palette
+                .get(index as usize)
+                .copied()
+                .ok_or(ArtworkOperationError::InvalidColorData)
+            }
+          })
+          .collect();
+
+        let image = image?;
+
+        self._image = image;
+      }
+    }
+
+    Ok(())
+  }
+
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = FrameContentHeader::parse(input)?;
     let (rest, input) = take(header.data_size as usize).parse(input)?;
 
     let (input, id) = dumb_string(header.id_len as usize).parse(input)?;
-    let (remaining_data, colors) =
-      compressed_colors(header.compressed_color_len as usize).parse(input)?;
+    let (remaining_data, color_bytes) =
+      compressed_color_bytes(header.compressed_color_len as usize).parse(input)?;
 
     Ok((
       rest,
       Self {
         id: id.to_string(),
-        colors,
+        color_bytes,
         remaining_data: remaining_data.into(),
+        _image: Vec::new(),
       },
     ))
   }
@@ -260,10 +302,10 @@ impl ModelMarshal for FrameContent {
 
   fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
     let id_len = self.id.len();
-    let color_len = self.colors.len() * 4;
+    let color_len = self.color_bytes.len();
 
     let mut color_buf = Vec::new();
-    for color in self.colors.iter() {
+    for color in self.color_bytes.iter() {
       color.marshal(&mut color_buf)?;
     }
     // encode colors
@@ -950,7 +992,7 @@ pub struct Tileset {
   pub tile_size: Size,
   /// Compressed color data of each tile using zlib compression.
   /// After decompressing, it will be in the form of `[ARGBColor]`.
-  pub tile_images: Vec<Vec<ArgbColor>>,
+  pub tile_image_bytes: Vec<Vec<u8>>,
   /// Tiles per row.
   /// Default: 6
   pub tiles_per_row: u16,
@@ -959,16 +1001,72 @@ pub struct Tileset {
   /// The palette organization for this tileset.
   pub palette_organization: TilesetPaletteOrganization,
   remaining_data: Vec<u8>,
+  pub _tile_images: Vec<Vec<ArgbColor>>,
 }
 
 impl Tileset {
+  /// Refresh _tile_images data from current tile_image_bytes.
+  pub(crate) fn refresh_tile_images(
+    &mut self,
+    color_depth: ColorDepth,
+    palette: &[ArgbColor],
+  ) -> Result<(), ArtworkOperationError> {
+    match color_depth {
+      ColorDepth::Rgb => {
+        let tile_images: Result<Vec<Vec<ArgbColor>>, ArtworkOperationError> = self
+          .tile_image_bytes
+          .iter()
+          .map(|image_bytes| {
+            let (_remaining_decompressed, colors) = many0(argb_color)
+              .parse(&image_bytes)
+              .map_err(|_e| ArtworkOperationError::InvalidColorData)?;
+
+            Ok(colors)
+          })
+          .collect();
+
+        let tile_images = tile_images?;
+
+        self._tile_images = tile_images;
+      }
+      ColorDepth::Indexed => {
+        let tile_images: Result<Vec<Vec<ArgbColor>>, ArtworkOperationError> = self
+          .tile_image_bytes
+          .iter()
+          .map(|image_byte| {
+            image_byte
+              .iter()
+              .copied()
+              .map(|index| {
+                if index == u8::MAX {
+                  Ok(ArgbColor::TRANSPARENT)
+                } else {
+                  palette
+                    .get(index as usize)
+                    .copied()
+                    .ok_or(ArtworkOperationError::InvalidColorData)
+                }
+              })
+              .collect()
+          })
+          .collect();
+
+        let tile_images = tile_images?;
+
+        self._tile_images = tile_images;
+      }
+    }
+
+    Ok(())
+  }
+
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, header) = TilesetHeader::parse(input)?;
     let (rest, input) = take(header.data_size as usize).parse(input)?;
 
     let (
       remaining_data,
-      (id, name, tile_size, tile_images, tiles_per_row, grid_color, palette_organization),
+      (id, name, tile_size, tile_image_bytes, tiles_per_row, grid_color, palette_organization),
     ) = (
       string,
       string,
@@ -986,11 +1084,12 @@ impl Tileset {
         id: id.to_string(),
         name: name.to_string(),
         tile_size,
-        tile_images,
+        tile_image_bytes,
         tiles_per_row,
         grid_color,
         palette_organization,
         remaining_data: remaining_data.into(),
+        _tile_images: Vec::new(),
       },
     ))
   }
@@ -999,7 +1098,7 @@ impl Tileset {
   /// The Tileset documentation labels this as `[ARGBColor]`,
   /// but each compressed tile contains the raw, consecutive ARGBColor values.
   /// Unlike other `[Type]` values in the format, there is no leading UInt64 count.
-  fn compressed_colors(input: &[u8]) -> PPResult<&[u8], Vec<ArgbColor>> {
+  fn compressed_colors(input: &[u8]) -> PPResult<&[u8], Vec<u8>> {
     let (input, compressed_data) = array_type(le_u8).parse(input)?;
     let deflate_data = compressed_data
       .get(2..)
@@ -1011,20 +1110,7 @@ impl Tileset {
       .read_to_end(&mut decompressed_bytes)
       .map_err(|_e| nom::Err::Error(ParseError::InvalidZlibData))?;
 
-    let (_remaining_decompressed, colors) =
-      many0(argb_color)
-        .parse(&decompressed_bytes)
-        .map_err(|e| match e {
-          nom::Err::Error(ParseError::Nom(_, kind)) => {
-            nom::Err::Error(ParseError::Nom(input, kind))
-          }
-          nom::Err::Failure(ParseError::Nom(_, kind)) => {
-            nom::Err::Failure(ParseError::Nom(input, kind))
-          }
-          _ => nom::Err::Failure(ParseError::InvalidZlibData),
-        })?;
-
-    Ok((input, colors))
+    Ok((input, decompressed_bytes))
   }
 }
 
@@ -1038,7 +1124,7 @@ impl ModelMarshal for Tileset {
     self.tile_size.marshal(&mut w)?;
 
     let mut compressed_colors = Vec::<Vec<u8>>::new();
-    for image_colors in self.tile_images.iter() {
+    for image_colors in self.tile_image_bytes.iter() {
       let mut color_data = Vec::<u8>::new();
       TypeN::new(image_colors).marshal(&mut color_data)?;
 
@@ -3448,10 +3534,14 @@ pub struct Artwork {
 
 impl<'a> Artwork {
   pub fn read(buf: &'a [u8]) -> Result<Self, ParseError<&'a [u8]>> {
-    let (_rest, artwork) = Self::parse(buf).map_err(|nom_err| match nom_err {
+    let (_rest, mut artwork) = Self::parse(buf).map_err(|nom_err| match nom_err {
       nom::Err::Error(e) | nom::Err::Failure(e) => e,
       nom::Err::Incomplete(_) => ParseError::Nom(buf, ErrorKind::Eof),
     })?;
+
+    artwork
+      .refresh_images()
+      .map_err(|_e| ParseError::InvalidColorData)?;
 
     Ok(artwork)
   }
@@ -3527,6 +3617,20 @@ impl<'a> Artwork {
     let tilemap_layer_frames_len = self.tilemap_layers.get(0).map_or(0, |l| l.frames.len());
 
     layer_frames_len.max(tilemap_layer_frames_len)
+  }
+
+  /// Refresh artwork images by current binary data.
+  /// This method must be called whenever the binary data of a FrameContent or Tileset image is updated.
+  pub fn refresh_images(&mut self) -> Result<(), ArtworkOperationError> {
+    for frame_content in &mut self.frame_contents {
+      frame_content.refresh_image(self.color_depth, &self.palette)?;
+    }
+
+    for tileset in &mut self.tilesets {
+      tileset.refresh_tile_images(self.color_depth, &self.palette)?;
+    }
+
+    Ok(())
   }
 
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
@@ -4278,67 +4382,61 @@ mod tests {
     assert_eq!(uniq_ids.len(), artwork.frame_contents.len());
     assert!(
       get_frame_content_by_indices(&artwork, 0, 0)
-        .colors
+        ._image
         .iter()
         .any(|color| color != &ArgbColor::default())
     );
     assert!(
       get_frame_content_by_indices(&artwork, 0, 1)
-        .colors
+        ._image
         .iter()
         .all(|color| color == &ArgbColor::default())
     );
     assert!(
       get_frame_content_by_indices(&artwork, 0, 3)
-        .colors
+        ._image
         .iter()
         .all(|color| color == &ArgbColor::default())
     );
     assert!(
       get_frame_content_by_indices(&artwork, 1, 0)
-        .colors
-        .iter()
-        .all(|color| color == &ArgbColor::default())
-    );
-    assert!(
-      get_frame_content_by_indices(&artwork, 1, 0)
-        .colors
+        ._image
         .iter()
         .all(|color| color == &ArgbColor::default())
     );
     assert!(
       get_frame_content_by_indices(&artwork, 1, 1)
-        .colors
+        ._image
         .iter()
         .any(|color| color != &ArgbColor::default())
     );
     assert!(
       get_frame_content_by_indices(&artwork, 1, 3)
-        .colors
+        ._image
         .iter()
         .all(|color| color == &ArgbColor::default())
     );
     assert!(
       get_frame_content_by_indices(&artwork, 2, 0)
-        .colors
+        ._image
         .iter()
         .all(|color| color == &ArgbColor::default())
     );
     assert!(
       get_frame_content_by_indices(&artwork, 2, 1)
-        .colors
+        ._image
         .iter()
         .any(|color| color != &ArgbColor::default())
     );
     assert!(
       get_frame_content_by_indices(&artwork, 2, 2)
-        .colors
+        ._image
         .iter()
         .all(|color| color == &ArgbColor::default())
     );
     assert!(
       get_frame_content_by_indices(&artwork, 2, 3)
-        .colors
+        ._image
         .iter()
         .all(|color| color == &ArgbColor::default())
     );
@@ -4574,7 +4672,7 @@ mod tests {
     // Tileset 1
     assert_eq!(artwork.tilesets[0].name, "Tileset 1");
     assert_eq!(artwork.tilesets[0].tile_size, Size::new(16, 16));
-    assert_eq!(artwork.tilesets[0].tile_images.len(), 3);
+    assert_eq!(artwork.tilesets[0]._tile_images.len(), 3);
     assert_eq!(artwork.tilesets[0].tiles_per_row, 6);
     assert_eq!(artwork.tilesets[0].grid_color, ArgbColor::new(0, 0, 0, 255));
     assert_eq!(
@@ -4584,7 +4682,7 @@ mod tests {
     // Tileset 2
     assert_eq!(artwork.tilesets[1].name, "Tileset 2");
     assert_eq!(artwork.tilesets[1].tile_size, Size::new(16, 16));
-    assert_eq!(artwork.tilesets[1].tile_images.len(), 2);
+    assert_eq!(artwork.tilesets[1]._tile_images.len(), 2);
     assert_eq!(artwork.tilesets[1].tiles_per_row, 6);
     assert_eq!(
       artwork.tilesets[1].grid_color,
@@ -4600,7 +4698,7 @@ mod tests {
     // Tileset 3
     assert_eq!(artwork.tilesets[2].name, "Tileset 3");
     assert_eq!(artwork.tilesets[2].tile_size, Size::new(16, 16));
-    assert_eq!(artwork.tilesets[2].tile_images.len(), 0);
+    assert_eq!(artwork.tilesets[2]._tile_images.len(), 0);
     assert_eq!(artwork.tilesets[2].tiles_per_row, 6);
     assert_eq!(artwork.tilesets[2].grid_color, ArgbColor::new(0, 0, 0, 255));
     assert_eq!(
