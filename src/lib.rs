@@ -9,3 +9,6 @@ pub mod primitive_type;
 mod processing;
 pub mod utility_type;
 mod writer;
+
+pub use model::Artwork;
+pub use utility_type::LayerVisibility;
