@@ -128,7 +128,7 @@ impl ModelMarshal for CustomDataStringContent {
   const HEADER_SIZE: usize = 16usize;
 
   fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
-    self.content.marshal(&mut w)?;
+    let _ = self.content.marshal(&mut w)?;
     TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
     let data_size = w.written_bytes();
@@ -316,7 +316,7 @@ impl ModelMarshal for FrameContent {
     // which does not include an Adler-32 checksum.
     // Therefore, I manually add zlib's default header to the Deflate-encoded data.
     let mut compressed_color_data = ZLIB_DEFAULT_HEADER.to_vec();
-    encoder.read_to_end(&mut compressed_color_data)?;
+    let _ = encoder.read_to_end(&mut compressed_color_data)?;
     let compressed_color_len = compressed_color_data.len();
 
     DumbString::new(self.id.clone()).marshal(&mut w)?;
@@ -412,7 +412,7 @@ impl ModelMarshal for TilemapFrameContent {
   const HEADER_SIZE: usize = 32usize;
 
   fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
-    self.id.marshal(&mut w)?;
+    let _ = self.id.marshal(&mut w)?;
     self.tile_size.marshal(&mut w)?;
 
     let mut tiles_buf = Vec::<u8>::new();
@@ -1106,7 +1106,7 @@ impl Tileset {
 
     let mut decoder = DeflateDecoder::new(deflate_data);
     let mut decompressed_bytes = Vec::new();
-    decoder
+    let _ = decoder
       .read_to_end(&mut decompressed_bytes)
       .map_err(|_e| nom::Err::Error(ParseError::InvalidZlibData))?;
 
@@ -1119,8 +1119,8 @@ impl ModelMarshal for Tileset {
   const HEADER_SIZE: usize = 32usize;
 
   fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
-    self.id.marshal(&mut w)?;
-    self.name.marshal(&mut w)?;
+    let _ = self.id.marshal(&mut w)?;
+    let _ = self.name.marshal(&mut w)?;
     self.tile_size.marshal(&mut w)?;
 
     let mut compressed_colors = Vec::<Vec<u8>>::new();
@@ -1133,7 +1133,7 @@ impl ModelMarshal for Tileset {
       // which does not include an Adler-32 checksum.
       // Therefore, I manually add zlib's default header to the Deflate-encoded data.
       let mut compressed_color_data = ZLIB_DEFAULT_HEADER.to_vec();
-      encoder.read_to_end(&mut compressed_color_data)?;
+      let _ = encoder.read_to_end(&mut compressed_color_data)?;
       compressed_colors.push(compressed_color_data);
     }
 
@@ -2341,9 +2341,9 @@ impl ModelMarshal for TilemapLayer {
   const HEADER_SIZE: usize = 32usize;
 
   fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
-    self.id.marshal(&mut w)?;
-    self.tileset_id.marshal(&mut w)?;
-    self.name.marshal(&mut w)?;
+    let _ = self.id.marshal(&mut w)?;
+    let _ = self.tileset_id.marshal(&mut w)?;
+    let _ = self.name.marshal(&mut w)?;
     self.frames.marshal(&mut w)?;
     self.opacity.marshal(&mut w)?;
     self.visible.marshal(&mut w)?;
@@ -2445,7 +2445,7 @@ impl ModelMarshal for Stats {
 
 /// Settings data of grid for canvas.
 /// <https://docs.pixquare.art/pixquare-file/binary-specs#canvasgrid>
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct CanvasGrid {
   pub size: Size,
   pub first_color: ArgbColor,
@@ -2840,7 +2840,7 @@ impl ModelMarshal for PostProcessorCrtContent {
   const HEADER_SIZE: usize = 16usize;
 
   fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
-    self.id.marshal(&mut w)?;
+    let _ = self.id.marshal(&mut w)?;
     self.is_pixel_independent.marshal(&mut w)?;
     self.scan_line_intensity.marshal(&mut w)?;
     self.glow_intensity.marshal(&mut w)?;
@@ -2936,7 +2936,7 @@ impl ModelMarshal for PostProcessorVignetteContent {
   const HEADER_SIZE: usize = 16usize;
 
   fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
-    self.id.marshal(&mut w)?;
+    let _ = self.id.marshal(&mut w)?;
     self.is_pixel_independent.marshal(&mut w)?;
     self.color.marshal(&mut w)?;
     self.intensity.marshal(&mut w)?;
@@ -3026,7 +3026,7 @@ impl ModelMarshal for PostProcessorBloomContent {
   const HEADER_SIZE: usize = 16usize;
 
   fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
-    self.id.marshal(&mut w)?;
+    let _ = self.id.marshal(&mut w)?;
     self.is_pixel_independent.marshal(&mut w)?;
     self.threshold.marshal(&mut w)?;
     self.intensity.marshal(&mut w)?;
@@ -3083,7 +3083,7 @@ impl ModelMarshal for PostProcessorRoundPixelContent {
   const HEADER_SIZE: usize = 16usize;
 
   fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
-    self.id.marshal(&mut w)?;
+    let _ = self.id.marshal(&mut w)?;
     self.is_contiguous.marshal(&mut w)?;
     self.background_color.marshal(&mut w)?;
     self.intensity.marshal(&mut w)?;
@@ -3247,7 +3247,7 @@ impl ModelMarshal for ModifierAnimationSpeedMultiplierContent {
   const HEADER_SIZE: usize = 16usize;
 
   fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
-    self.id.marshal(&mut w)?;
+    let _ = self.id.marshal(&mut w)?;
     self.enabled.marshal(&mut w)?;
     self.multiplier.marshal(&mut w)?;
     TypeN::new(&self.remaining_data).marshal(&mut w)?;
@@ -3547,7 +3547,7 @@ impl<'a> Artwork {
   }
 
   /// Writes the file in Pixquare artwork binary format to any writer.
-  pub fn write<W: std::io::Write>(&self, w: &mut W) -> Result<(), MarshalError> {
+  pub fn write<W: Write>(&self, w: &mut W) -> Result<(), MarshalError> {
     self.marshal(w)?;
 
     Ok(())

@@ -12,7 +12,7 @@ pub(crate) struct CountingWriter<W> {
 }
 
 impl<W> CountingWriter<W> {
-  pub fn new(inner: W) -> Self {
+  pub(crate) fn new(inner: W) -> Self {
     Self {
       inner,
       bytes_count: 0,

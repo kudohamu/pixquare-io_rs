@@ -4,11 +4,11 @@ use crate::composite_type::{Corners, FlipAxes};
 pub(crate) struct DumbString(String);
 
 impl DumbString {
-  pub fn new(s: String) -> Self {
+  pub(crate) fn new(s: String) -> Self {
     Self(s)
   }
 
-  pub fn to_string(&self) -> String {
+  pub(crate) fn to_string(&self) -> String {
     self.0.clone()
   }
 }
@@ -22,7 +22,7 @@ impl From<String> for DumbString {
 pub(crate) struct TypeN<'a, T>(pub &'a [T]);
 
 impl<'a, T> TypeN<'a, T> {
-  pub fn new(arr: &'a [T]) -> Self {
+  pub(crate) fn new(arr: &'a [T]) -> Self {
     Self(arr)
   }
 }

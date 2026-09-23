@@ -1,6 +1,6 @@
 use crate::composite_type::{ArgbColor, Corners, Size};
 
-pub fn outside_gradient(
+pub(crate) fn outside_gradient(
   source: &[ArgbColor],
   target: &mut [ArgbColor],
   canvas_size: &Size,
@@ -21,7 +21,7 @@ pub fn outside_gradient(
   }
 }
 
-pub fn inside_gradient(
+pub(crate) fn inside_gradient(
   source: &[ArgbColor],
   target: &mut [ArgbColor],
   canvas_size: &Size,
@@ -42,7 +42,7 @@ pub fn inside_gradient(
   }
 }
 
-pub fn hit_or_miss(
+pub(crate) fn hit_or_miss(
   source: &[ArgbColor],
   target: &mut [ArgbColor],
   canvas_size: &Size,
@@ -97,7 +97,11 @@ pub fn hit_or_miss(
   }
 }
 
-pub fn binarize(source: &[ArgbColor], target: &mut [ArgbColor], ignore_colors: &[ArgbColor]) {
+pub(crate) fn binarize(
+  source: &[ArgbColor],
+  target: &mut [ArgbColor],
+  ignore_colors: &[ArgbColor],
+) {
   for (index, pixel) in source.iter().enumerate() {
     if pixel.a != 0
       && ignore_colors

@@ -17,14 +17,14 @@ use crate::{
 };
 
 /// Combinator for UTF8 data of a string.
-pub fn dumb_string<'a>(
+pub(crate) fn dumb_string<'a>(
   len: usize,
 ) -> impl Parser<&'a [u8], Output = DumbString, Error = ParseError<&'a [u8]>> {
   map(map_res(take(len), from_utf8), |s| s.to_string().into())
 }
 
 /// Combinator(complete version) for UTF8 string of .px binary spec.
-pub fn string(input: &[u8]) -> PPResult<&[u8], String> {
+pub(crate) fn string(input: &[u8]) -> PPResult<&[u8], String> {
   let (input, ds) = le_u16
     .flat_map(|len| dumb_string(len as usize))
     .parse(input)?;
@@ -33,24 +33,24 @@ pub fn string(input: &[u8]) -> PPResult<&[u8], String> {
 }
 
 /// Combinator(complete version) for 16-bit float.
-pub fn float16(input: &[u8]) -> PPResult<&[u8], f16> {
+pub(crate) fn float16(input: &[u8]) -> PPResult<&[u8], f16> {
   le_u16.map(|bits| f16::from_bits(bits)).parse(input)
 }
 
 /// Combinator(complete version) for a boolean value, 1 byte.
-pub fn bool(input: &[u8]) -> PPResult<&[u8], bool> {
+pub(crate) fn bool(input: &[u8]) -> PPResult<&[u8], bool> {
   le_u8.map(|val| val != 0).parse(input)
 }
 
 /// Combinator(complete version) for OptionSet<UInt8>.
-pub fn option_set_u8(input: &[u8]) -> PPResult<&[u8], OptionSet<u8>> {
+pub(crate) fn option_set_u8(input: &[u8]) -> PPResult<&[u8], OptionSet<u8>> {
   let (input, v) = le_u8(input)?;
 
   Ok((input, OptionSet::new(v)))
 }
 
 /// Combinator for n consecutive value of type.
-pub fn type_n<I, F>(
+pub(crate) fn type_n<I, F>(
   parser: F,
   n: usize,
 ) -> impl Parser<I, Output = Vec<<F as Parser<I>>::Output>, Error = <F as Parser<I>>::Error>
@@ -62,7 +62,7 @@ where
 }
 
 /// Combinator for array of type.
-pub fn array_type<'a, F>(
+pub(crate) fn array_type<'a, F>(
   parser: F,
 ) -> impl Parser<
   &'a [u8],
@@ -80,35 +80,35 @@ where
 }
 
 /// Combinator(complete version) for coordinate.
-pub fn coordinate(input: &[u8]) -> PPResult<&[u8], Coordinate> {
+pub(crate) fn coordinate(input: &[u8]) -> PPResult<&[u8], Coordinate> {
   let (input, (x, y)) = (le_i32, le_i32).parse(input)?;
 
   Ok((input, Coordinate { x, y }))
 }
 
 /// Combinator(complete version) for size.
-pub fn size(input: &[u8]) -> PPResult<&[u8], Size> {
+pub(crate) fn size(input: &[u8]) -> PPResult<&[u8], Size> {
   let (input, (width, height)) = (le_u32, le_u32).parse(input)?;
 
   Ok((input, Size { width, height }))
 }
 
 /// Combinator(complete version) for rect.
-pub fn rect(input: &[u8]) -> PPResult<&[u8], Rect> {
+pub(crate) fn rect(input: &[u8]) -> PPResult<&[u8], Rect> {
   let (input, (origin, size)) = (coordinate, size).parse(input)?;
 
   Ok((input, Rect { origin, size }))
 }
 
 /// Combinator(complete version) for ARGBColor.
-pub fn argb_color(input: &[u8]) -> PPResult<&[u8], ArgbColor> {
+pub(crate) fn argb_color(input: &[u8]) -> PPResult<&[u8], ArgbColor> {
   let (input, (r, g, b, a)) = (le_u8, le_u8, le_u8, le_u8).parse(input)?;
 
   Ok((input, ArgbColor { r, g, b, a }))
 }
 
 /// Combinator for compressed argb colors ([Byte]).
-pub fn compressed_color_bytes<'a>(
+pub(crate) fn compressed_color_bytes<'a>(
   compressed_len: usize,
 ) -> impl Parser<&'a [u8], Output = Vec<u8>, Error = ParseError<&'a [u8]>> + Clone {
   move |input: &'a [u8]| {
@@ -119,7 +119,7 @@ pub fn compressed_color_bytes<'a>(
 
     let mut decoder = DeflateDecoder::new(deflate_data);
     let mut decompressed_bytes = Vec::new();
-    decoder
+    let _ = decoder
       .read_to_end(&mut decompressed_bytes)
       .map_err(|_e| nom::Err::Error(ParseError::InvalidZlibData))?;
 
@@ -128,13 +128,13 @@ pub fn compressed_color_bytes<'a>(
 }
 
 /// Combinator(complete version) for corners.
-pub fn corners(input: &[u8]) -> PPResult<&[u8], Corners> {
+pub(crate) fn corners(input: &[u8]) -> PPResult<&[u8], Corners> {
   let (input, option_set) = option_set_u8(input)?;
 
   Ok((input, option_set.into()))
 }
 
 /// Combinator(complete version) for BlendMode.
-pub fn blend_mode(input: &[u8]) -> PPResult<&[u8], BlendMode> {
+pub(crate) fn blend_mode(input: &[u8]) -> PPResult<&[u8], BlendMode> {
   map_res(le_u16, |v| v.try_into()).parse(input)
 }

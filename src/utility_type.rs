@@ -45,7 +45,7 @@ pub(crate) enum RenderPlan<'a> {
 }
 
 impl<'a> RenderPlan<'a> {
-  pub fn build(
+  pub(crate) fn build(
     artwork: &'a Artwork,
     frame_index: usize,
     visibility: LayerVisibility,
@@ -231,7 +231,10 @@ impl<'a> RenderPlan<'a> {
     Ok(plans)
   }
 
-  pub fn render_onto(&self, mut backdrop: &mut [ArgbColor]) -> Result<(), ArtworkOperationError> {
+  pub(crate) fn render_onto(
+    &self,
+    mut backdrop: &mut [ArgbColor],
+  ) -> Result<(), ArtworkOperationError> {
     match self {
       Self::Group {
         opacity,
