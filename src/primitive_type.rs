@@ -1,3 +1,5 @@
+use std::fmt::{self, Display};
+
 use crate::composite_type::{Corners, FlipAxes};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -7,9 +9,11 @@ impl DumbString {
   pub(crate) fn new(s: String) -> Self {
     Self(s)
   }
+}
 
-  pub(crate) fn to_string(&self) -> String {
-    self.0.clone()
+impl Display for DumbString {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.write_str(&self.0)
   }
 }
 
@@ -55,7 +59,7 @@ impl OptionSet<u8> {
 
 impl From<Corners> for OptionSet<u8> {
   fn from(c: Corners) -> Self {
-    let b0: u8 = (if c.top_left { 1 } else { 0 }) << 0;
+    let b0: u8 = if c.top_left { 1 } else { 0 };
     let b1: u8 = (if c.top { 1 } else { 0 }) << 1;
     let b2: u8 = (if c.top_right { 1 } else { 0 }) << 2;
     let b3: u8 = (if c.right { 1 } else { 0 }) << 3;
@@ -72,7 +76,7 @@ impl From<Corners> for OptionSet<u8> {
 
 impl From<FlipAxes> for OptionSet<u8> {
   fn from(f: FlipAxes) -> Self {
-    let b0: u8 = (if f.horizontal { 1 } else { 0 }) << 0;
+    let b0: u8 = if f.horizontal { 1 } else { 0 };
     let b1: u8 = (if f.vertical { 1 } else { 0 }) << 1;
 
     let v = b0 | b1;

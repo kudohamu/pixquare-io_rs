@@ -56,11 +56,11 @@ pub(crate) fn hit_or_miss(
     if pixel.a != 0 {
       continue;
     }
-    if corners.len() == 0 {
+    if corners.is_empty() {
       continue;
     }
     let coordinates: Vec<Vec<(usize, usize)>> = corners
-      .into_iter()
+      .iter()
       .filter_map(|corner| check_corner_all_black(&bin, canvas_size, index, corner))
       .collect();
 
@@ -186,7 +186,7 @@ fn is_shift_source_black(
   let source_x = if offset_x >= 0 {
     target_x.checked_sub(offset_x as usize)
   } else {
-    Some(target_x + offset_x.abs() as usize)
+    Some(target_x + offset_x.unsigned_abs() as usize)
   };
   let Some(source_x) = source_x else {
     return false;
@@ -198,7 +198,7 @@ fn is_shift_source_black(
   let source_y = if offset_y >= 0 {
     target_y.checked_sub(offset_y as usize)
   } else {
-    Some(target_y + offset_y.abs() as usize)
+    Some(target_y + offset_y.unsigned_abs() as usize)
   };
   let Some(source_y) = source_y else {
     return false;
@@ -230,22 +230,18 @@ fn check_corner_all_black(
       let target_x = if offset_x >= 0 {
         Some(source_x + offset_x as usize)
       } else {
-        source_x.checked_sub(offset_x.abs() as usize)
+        source_x.checked_sub(offset_x.unsigned_abs() as usize)
       };
-      let Some(target_x) = target_x else {
-        return None;
-      };
+      let target_x = target_x?;
       if target_x > width - 1 {
         return None;
       }
       let target_y = if offset_y >= 0 {
         Some(source_y + offset_y as usize)
       } else {
-        source_y.checked_sub(offset_y.abs() as usize)
+        source_y.checked_sub(offset_y.unsigned_abs() as usize)
       };
-      let Some(target_y) = target_y else {
-        return None;
-      };
+      let target_y = target_y?;
       if target_y > height - 1 {
         return None;
       }

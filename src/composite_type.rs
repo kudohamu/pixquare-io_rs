@@ -132,18 +132,10 @@ impl TryFrom<&[u8]> for ArgbColor {
   type Error = ParseError<&'static [u8]>;
 
   fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-    let r = value
-      .get(0)
-      .ok_or_else(|| ParseError::InvalidArgbColorFormat)?;
-    let g = value
-      .get(1)
-      .ok_or_else(|| ParseError::InvalidArgbColorFormat)?;
-    let b = value
-      .get(2)
-      .ok_or_else(|| ParseError::InvalidArgbColorFormat)?;
-    let a = value
-      .get(3)
-      .ok_or_else(|| ParseError::InvalidArgbColorFormat)?;
+    let r = value.first().ok_or(ParseError::InvalidArgbColorFormat)?;
+    let g = value.get(1).ok_or(ParseError::InvalidArgbColorFormat)?;
+    let b = value.get(2).ok_or(ParseError::InvalidArgbColorFormat)?;
+    let a = value.get(3).ok_or(ParseError::InvalidArgbColorFormat)?;
 
     Ok(Self {
       r: *r,

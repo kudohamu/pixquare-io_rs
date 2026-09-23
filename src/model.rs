@@ -547,11 +547,11 @@ impl ModelMarshal for Frame {
     TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
     let data_size = w.written_bytes();
-    return Ok(FrameHeader {
+    Ok(FrameHeader {
       data_size: data_size as u32,
       id_len: id_len as u8,
       content_len: content_len as u8,
-    });
+    })
   }
 }
 
@@ -1018,7 +1018,7 @@ impl Tileset {
           .iter()
           .map(|image_bytes| {
             let (_remaining_decompressed, colors) = many0(argb_color)
-              .parse(&image_bytes)
+              .parse(image_bytes)
               .map_err(|_e| ArtworkOperationError::InvalidColorData)?;
 
             Ok(colors)
@@ -1487,8 +1487,8 @@ impl<'a> FxPatternOverlayContent {
         let grid_x = repeat_x * self.pattern_size.width as usize;
 
         for (pixel_index, pattern_pixel) in self.patterns.iter().enumerate() {
-          let pattern_x = pixel_index as usize % self.pattern_size.width as usize;
-          let pattern_y = pixel_index as usize / self.pattern_size.width as usize;
+          let pattern_x = pixel_index % self.pattern_size.width as usize;
+          let pattern_y = pixel_index / self.pattern_size.width as usize;
 
           if (grid_x + pattern_x >= canvas_size.width as usize)
             || (grid_y + pattern_y >= canvas_size.height as usize)
@@ -3570,7 +3570,7 @@ impl<'a> Artwork {
       buf[i * 4 + 3] = color.a;
     }
 
-    return Ok(buf);
+    Ok(buf)
   }
 
   /// Returns the image data for a specific frame as straight-alpha.
@@ -3591,7 +3591,7 @@ impl<'a> Artwork {
       buf[i * 4 + 3] = color.a;
     }
 
-    return Ok(buf);
+    Ok(buf)
   }
 
   pub fn get_frames(&self) -> &[Frame] {
@@ -3613,8 +3613,8 @@ impl<'a> Artwork {
   }
 
   pub fn frames_len(&self) -> usize {
-    let layer_frames_len = self.layers.get(0).map_or(0, |l| l.frames.len());
-    let tilemap_layer_frames_len = self.tilemap_layers.get(0).map_or(0, |l| l.frames.len());
+    let layer_frames_len = self.layers.first().map_or(0, |l| l.frames.len());
+    let tilemap_layer_frames_len = self.tilemap_layers.first().map_or(0, |l| l.frames.len());
 
     layer_frames_len.max(tilemap_layer_frames_len)
   }
@@ -3873,7 +3873,7 @@ mod tests {
     );
     assert!(artwork.post_processors.is_empty());
     assert_eq!(artwork.palette_organization, PaletteOrganization::Packed);
-    assert_eq!(artwork.is_need_timelapse, false);
+    assert!(!artwork.is_need_timelapse);
     assert_eq!(
       artwork.tiled_corners,
       Corners {
@@ -3940,11 +3940,11 @@ mod tests {
     assert_eq!(artwork.groups[0].name, "Group 1");
     assert_eq!(artwork.groups[0].child_entries.len(), 3);
     assert_eq!(artwork.groups[0].opacity, f16::from_f32(1.0));
-    assert_eq!(artwork.groups[0].visible, true);
-    assert_eq!(artwork.groups[0].content_locked, false);
-    assert_eq!(artwork.groups[0].selected, true);
-    assert_eq!(artwork.groups[0].alpha_locked, true);
-    assert_eq!(artwork.groups[0].expanded, false);
+    assert!(artwork.groups[0].visible);
+    assert!(!artwork.groups[0].content_locked);
+    assert!(artwork.groups[0].selected);
+    assert!(artwork.groups[0].alpha_locked);
+    assert!(!artwork.groups[0].expanded);
     assert!(artwork.groups[0].cropping_masks.is_empty());
     assert_eq!(artwork.groups[0].clipping_masks.len(), 1);
     assert_eq!(artwork.groups[0].color, ArgbColor::default());
@@ -3952,11 +3952,11 @@ mod tests {
     assert_eq!(artwork.groups[1].name, "Group 2");
     assert_eq!(artwork.groups[1].child_entries.len(), 1);
     assert_eq!(artwork.groups[1].opacity, f16::from_f32(1.0));
-    assert_eq!(artwork.groups[1].visible, false);
-    assert_eq!(artwork.groups[1].content_locked, true);
-    assert_eq!(artwork.groups[1].selected, false);
-    assert_eq!(artwork.groups[1].alpha_locked, false);
-    assert_eq!(artwork.groups[1].expanded, true);
+    assert!(!artwork.groups[1].visible);
+    assert!(artwork.groups[1].content_locked);
+    assert!(!artwork.groups[1].selected);
+    assert!(!artwork.groups[1].alpha_locked);
+    assert!(artwork.groups[1].expanded);
     assert!(artwork.groups[1].cropping_masks.is_empty());
     assert!(artwork.groups[1].clipping_masks.is_empty());
     assert_eq!(artwork.groups[1].color, ArgbColor::default());
@@ -3964,11 +3964,11 @@ mod tests {
     assert_eq!(artwork.groups[2].name, "Group 3");
     assert_eq!(artwork.groups[2].child_entries.len(), 1);
     assert_eq!(artwork.groups[2].opacity, f16::from_f32(0.77));
-    assert_eq!(artwork.groups[2].visible, true);
-    assert_eq!(artwork.groups[2].content_locked, false);
-    assert_eq!(artwork.groups[2].selected, false);
-    assert_eq!(artwork.groups[2].alpha_locked, false);
-    assert_eq!(artwork.groups[2].expanded, true);
+    assert!(artwork.groups[2].visible);
+    assert!(!artwork.groups[2].content_locked);
+    assert!(!artwork.groups[2].selected);
+    assert!(!artwork.groups[2].alpha_locked);
+    assert!(artwork.groups[2].expanded);
     assert!(artwork.groups[2].cropping_masks.is_empty());
     assert!(artwork.groups[2].clipping_masks.is_empty());
     assert_eq!(artwork.groups[2].color, ArgbColor::new(143, 42, 42, 225));
@@ -3991,12 +3991,12 @@ mod tests {
     assert_eq!(artwork.layers[0].name, "Layer 1");
     assert_eq!(artwork.layers[0].frames.len(), 1);
     assert_eq!(artwork.layers[0].opacity, f16::from_f32(1.0));
-    assert_eq!(artwork.layers[0].visible, true);
-    assert_eq!(artwork.layers[0].locked, false);
-    assert_eq!(artwork.layers[0].selected, false);
-    assert_eq!(artwork.layers[0].alpha_locked, false);
+    assert!(artwork.layers[0].visible);
+    assert!(!artwork.layers[0].locked);
+    assert!(!artwork.layers[0].selected);
+    assert!(!artwork.layers[0].alpha_locked);
     assert_eq!(artwork.layers[0].blend_mode, BlendMode::Normal);
-    assert_eq!(artwork.layers[0].linked, false);
+    assert!(!artwork.layers[0].linked);
     assert!(artwork.layers[0].cropping_masks.is_empty());
     assert!(artwork.layers[0].clipping_masks.is_empty());
     assert_eq!(artwork.layers[0].color, ArgbColor::new(98, 122, 93, 255));
@@ -4005,12 +4005,12 @@ mod tests {
     assert_eq!(artwork.layers[1].name, "Layer 2");
     assert_eq!(artwork.layers[1].frames.len(), 1);
     assert_eq!(artwork.layers[1].opacity, f16::from_f32(1.0));
-    assert_eq!(artwork.layers[1].visible, true);
-    assert_eq!(artwork.layers[1].locked, true);
-    assert_eq!(artwork.layers[1].selected, false);
-    assert_eq!(artwork.layers[1].alpha_locked, false);
+    assert!(artwork.layers[1].visible);
+    assert!(artwork.layers[1].locked);
+    assert!(!artwork.layers[1].selected);
+    assert!(!artwork.layers[1].alpha_locked);
     assert_eq!(artwork.layers[1].blend_mode, BlendMode::Normal);
-    assert_eq!(artwork.layers[1].linked, true);
+    assert!(artwork.layers[1].linked);
     assert!(artwork.layers[1].cropping_masks.is_empty());
     assert!(artwork.layers[1].clipping_masks.is_empty());
     assert_eq!(artwork.layers[1].color, ArgbColor::default());
@@ -4019,12 +4019,12 @@ mod tests {
     assert_eq!(artwork.layers[2].name, "Layer 3");
     assert_eq!(artwork.layers[2].frames.len(), 1);
     assert_eq!(artwork.layers[2].opacity, f16::from_f32(1.0));
-    assert_eq!(artwork.layers[2].visible, false);
-    assert_eq!(artwork.layers[2].locked, false);
-    assert_eq!(artwork.layers[2].selected, false);
-    assert_eq!(artwork.layers[2].alpha_locked, false);
+    assert!(!artwork.layers[2].visible);
+    assert!(!artwork.layers[2].locked);
+    assert!(!artwork.layers[2].selected);
+    assert!(!artwork.layers[2].alpha_locked);
     assert_eq!(artwork.layers[2].blend_mode, BlendMode::Normal);
-    assert_eq!(artwork.layers[2].linked, false);
+    assert!(!artwork.layers[2].linked);
     assert!(artwork.layers[2].cropping_masks.is_empty());
     assert!(artwork.layers[2].clipping_masks.is_empty());
     assert_eq!(artwork.layers[2].color, ArgbColor::default());
@@ -4033,12 +4033,12 @@ mod tests {
     assert_eq!(artwork.layers[3].name, "Layer 4");
     assert_eq!(artwork.layers[3].frames.len(), 1);
     assert_eq!(artwork.layers[3].opacity, f16::from_f32(0.58));
-    assert_eq!(artwork.layers[3].visible, true);
-    assert_eq!(artwork.layers[3].locked, false);
-    assert_eq!(artwork.layers[3].selected, true);
-    assert_eq!(artwork.layers[3].alpha_locked, true);
+    assert!(artwork.layers[3].visible);
+    assert!(!artwork.layers[3].locked);
+    assert!(artwork.layers[3].selected);
+    assert!(artwork.layers[3].alpha_locked);
     assert_eq!(artwork.layers[3].blend_mode, BlendMode::Normal);
-    assert_eq!(artwork.layers[3].linked, false);
+    assert!(!artwork.layers[3].linked);
     assert!(artwork.layers[3].cropping_masks.is_empty());
     assert_eq!(artwork.layers[3].clipping_masks.len(), 1);
     assert_eq!(artwork.layers[3].color, ArgbColor::default());
@@ -4047,12 +4047,12 @@ mod tests {
     assert_eq!(artwork.layers[4].name, "Layer 5");
     assert_eq!(artwork.layers[4].frames.len(), 1);
     assert_eq!(artwork.layers[4].opacity, f16::from_f32(1.0));
-    assert_eq!(artwork.layers[4].visible, true);
-    assert_eq!(artwork.layers[4].locked, false);
-    assert_eq!(artwork.layers[4].selected, false);
-    assert_eq!(artwork.layers[4].alpha_locked, false);
+    assert!(artwork.layers[4].visible);
+    assert!(!artwork.layers[4].locked);
+    assert!(!artwork.layers[4].selected);
+    assert!(!artwork.layers[4].alpha_locked);
     assert_eq!(artwork.layers[4].blend_mode, BlendMode::Normal);
-    assert_eq!(artwork.layers[4].linked, false);
+    assert!(!artwork.layers[4].linked);
     assert!(artwork.layers[4].cropping_masks.is_empty());
     assert!(artwork.layers[4].clipping_masks.is_empty());
     assert_eq!(artwork.layers[4].color, ArgbColor::default());
@@ -4061,12 +4061,12 @@ mod tests {
     assert_eq!(artwork.layers[5].name, "Layer 6");
     assert_eq!(artwork.layers[5].frames.len(), 1);
     assert_eq!(artwork.layers[5].opacity, f16::from_f32(1.0));
-    assert_eq!(artwork.layers[5].visible, true);
-    assert_eq!(artwork.layers[5].locked, false);
-    assert_eq!(artwork.layers[5].selected, false);
-    assert_eq!(artwork.layers[5].alpha_locked, false);
+    assert!(artwork.layers[5].visible);
+    assert!(!artwork.layers[5].locked);
+    assert!(!artwork.layers[5].selected);
+    assert!(!artwork.layers[5].alpha_locked);
     assert_eq!(artwork.layers[5].blend_mode, BlendMode::Overlay);
-    assert_eq!(artwork.layers[5].linked, false);
+    assert!(!artwork.layers[5].linked);
     assert_eq!(artwork.layers[5].cropping_masks.len(), 1);
     assert!(artwork.layers[5].clipping_masks.is_empty());
     assert_eq!(artwork.layers[5].color, ArgbColor::default());
@@ -4075,12 +4075,12 @@ mod tests {
     assert_eq!(artwork.layers[6].name, "Layer 7");
     assert_eq!(artwork.layers[6].frames.len(), 1);
     assert_eq!(artwork.layers[6].opacity, f16::from_f32(1.0));
-    assert_eq!(artwork.layers[6].visible, true);
-    assert_eq!(artwork.layers[6].locked, false);
-    assert_eq!(artwork.layers[6].selected, false);
-    assert_eq!(artwork.layers[6].alpha_locked, false);
+    assert!(artwork.layers[6].visible);
+    assert!(!artwork.layers[6].locked);
+    assert!(!artwork.layers[6].selected);
+    assert!(!artwork.layers[6].alpha_locked);
     assert_eq!(artwork.layers[6].blend_mode, BlendMode::Normal);
-    assert_eq!(artwork.layers[6].linked, false);
+    assert!(!artwork.layers[6].linked);
     assert!(artwork.layers[6].cropping_masks.is_empty());
     assert!(artwork.layers[6].clipping_masks.is_empty());
     assert_eq!(artwork.layers[6].color, ArgbColor::default());
@@ -4105,7 +4105,7 @@ mod tests {
     let Fx::PatternOverlay(fx) = &artwork.layers[0].fxs[0] else {
       panic!("expected Fx::PatternOverlay");
     };
-    assert_eq!(fx.enabled, true);
+    assert!(fx.enabled);
     assert_eq!(
       fx.patterns.len(),
       (fx.pattern_size.width * fx.pattern_size.height) as usize
@@ -4124,7 +4124,7 @@ mod tests {
         &artwork.layers[1].fxs[0]
       );
     };
-    assert_eq!(fx.enabled, true);
+    assert!(fx.enabled);
     assert_eq!(fx.color, ArgbColor::new(183, 166, 167, 212));
     assert_eq!(fx.blend_mode, BlendMode::Screen);
     // check for unspecified data in binary-spec.
@@ -4138,7 +4138,7 @@ mod tests {
         &artwork.layers[2].fxs[0]
       );
     };
-    assert_eq!(fx.enabled, true);
+    assert!(fx.enabled);
     assert_eq!(
       fx.corners,
       Corners {
@@ -4152,8 +4152,8 @@ mod tests {
     );
     assert_eq!(fx.ignored_colors.len(), 1);
     assert_eq!(fx.ignored_colors[0], ArgbColor::new(121, 58, 128, 255));
-    assert_eq!(fx.is_outside, true);
-    assert_eq!(fx.is_water_color_on, true);
+    assert!(fx.is_outside);
+    assert!(fx.is_water_color_on);
     // check for unspecified data in binary-spec.
     assert!(fx.remaining_data.is_empty());
 
@@ -4163,7 +4163,7 @@ mod tests {
         &artwork.layers[2].fxs[1]
       );
     };
-    assert_eq!(fx.enabled, true);
+    assert!(fx.enabled);
     assert_eq!(fx.corners.len(), 7);
     assert_eq!(
       fx.corners[0],
@@ -4247,17 +4247,17 @@ mod tests {
     assert_eq!(artwork.layers[1].frames.len(), 3);
     let frame1 = &artwork.layers[0].frames[0];
     assert_eq!(frame1.duration, 155);
-    assert_eq!(frame1.selected, false);
+    assert!(!frame1.selected);
     assert_eq!(frame1.opacity, f16::from_f32(2.0));
     assert_eq!(frame1.z_index, 0);
     let frame2 = &artwork.layers[0].frames[1];
     assert_eq!(frame2.duration, 155);
-    assert_eq!(frame2.selected, true);
+    assert!(frame2.selected);
     assert_eq!(frame2.opacity, f16::from_f32(2.0));
     assert_eq!(frame2.z_index, 0);
     let frame3 = &artwork.layers[0].frames[2];
     assert_eq!(frame3.duration, 100);
-    assert_eq!(frame3.selected, false);
+    assert!(!frame3.selected);
     assert_eq!(frame3.opacity, f16::from_f32(2.0));
     assert_eq!(frame3.z_index, 0);
     assert_eq!(frame1.id, artwork.layers[1].frames[0].id);
@@ -4502,13 +4502,13 @@ mod tests {
     assert_eq!(artwork.reference_layers.len(), 2);
     // Reference Layer 1
     assert_eq!(artwork.reference_layers[0].name, "Reference Layer 1");
-    assert!(artwork.reference_layers[0].png_data.len() > 0);
+    assert!(!artwork.reference_layers[0].png_data.is_empty());
     assert_eq!(
       artwork.reference_layers[0].opacity,
       f16::from_f32(0.7001953)
     );
-    assert_eq!(artwork.reference_layers[0].visible, false);
-    assert_eq!(artwork.reference_layers[0].selected, false);
+    assert!(!artwork.reference_layers[0].visible);
+    assert!(!artwork.reference_layers[0].selected);
     assert_eq!(
       artwork.reference_layers[0].bounds,
       Rect {
@@ -4524,14 +4524,14 @@ mod tests {
       artwork.reference_layers[0].color,
       ArgbColor::new(255, 0, 0, 255)
     );
-    assert_eq!(artwork.reference_layers[0].flip_axes.vertical, false);
-    assert_eq!(artwork.reference_layers[0].flip_axes.horizontal, false);
+    assert!(!artwork.reference_layers[0].flip_axes.vertical);
+    assert!(!artwork.reference_layers[0].flip_axes.horizontal);
     // Reference Layer 2
     assert_eq!(artwork.reference_layers[1].name, "Reference Layer 2");
-    assert!(artwork.reference_layers[1].png_data.len() > 0);
+    assert!(!artwork.reference_layers[1].png_data.is_empty());
     assert_eq!(artwork.reference_layers[1].opacity, f16::from_f32(1.0));
-    assert_eq!(artwork.reference_layers[1].visible, true);
-    assert_eq!(artwork.reference_layers[1].selected, false);
+    assert!(artwork.reference_layers[1].visible);
+    assert!(!artwork.reference_layers[1].selected);
     assert_eq!(
       artwork.reference_layers[1].bounds,
       Rect {
@@ -4544,8 +4544,8 @@ mod tests {
     );
     assert_eq!(artwork.reference_layers[1].angle, 0.8069841);
     assert_eq!(artwork.reference_layers[1].color, ArgbColor::default());
-    assert_eq!(artwork.reference_layers[1].flip_axes.vertical, false);
-    assert_eq!(artwork.reference_layers[1].flip_axes.horizontal, true);
+    assert!(!artwork.reference_layers[1].flip_axes.vertical);
+    assert!(artwork.reference_layers[1].flip_axes.horizontal);
 
     // check for unspecified data in binary-spec.
     assert!(artwork.reference_layers[0].remaining_data.is_empty());
@@ -4577,8 +4577,8 @@ mod tests {
       artwork.symmetry_lines[0].color,
       ArgbColor::new(0, 255, 58, 255)
     );
-    assert_eq!(artwork.symmetry_lines[0].selected, false);
-    assert_eq!(artwork.symmetry_lines[0].enabled, true);
+    assert!(!artwork.symmetry_lines[0].selected);
+    assert!(artwork.symmetry_lines[0].enabled);
     assert_eq!(artwork.symmetry_lines[0].origin_x, 16.);
     assert_eq!(artwork.symmetry_lines[0].origin_y, 32.5);
     assert_eq!(artwork.symmetry_lines[0].angle, 2.3561945);
@@ -4591,8 +4591,8 @@ mod tests {
       artwork.symmetry_lines[1].color,
       ArgbColor::new(0, 8, 255, 255)
     );
-    assert_eq!(artwork.symmetry_lines[1].selected, false);
-    assert_eq!(artwork.symmetry_lines[1].enabled, true);
+    assert!(!artwork.symmetry_lines[1].selected);
+    assert!(artwork.symmetry_lines[1].enabled);
     assert_eq!(artwork.symmetry_lines[1].origin_x, 48.0);
     assert_eq!(artwork.symmetry_lines[1].origin_y, 23.5);
     assert_eq!(artwork.symmetry_lines[1].angle, 1.6164448);
@@ -4620,38 +4620,38 @@ mod tests {
     assert_eq!(artwork.tags[0].name, "Tag1");
     assert_eq!(artwork.tags[0].start_index, 0);
     assert_eq!(artwork.tags[0].end_index, 2);
-    assert_eq!(artwork.tags[0].selected, false);
+    assert!(!artwork.tags[0].selected);
     assert_eq!(artwork.tags[0].color, ArgbColor::new(0, 0, 0, 255));
     assert_eq!(artwork.tags[0].direction, AnimationDirection::Forward);
     assert_eq!(artwork.tags[0].loop_count, 0);
-    assert_eq!(artwork.tags[0].enabled, true);
+    assert!(artwork.tags[0].enabled);
     // Tag2
     assert_eq!(artwork.tags[1].name, "Tag2");
     assert_eq!(artwork.tags[1].start_index, 2);
     assert_eq!(artwork.tags[1].end_index, 3);
-    assert_eq!(artwork.tags[1].selected, true);
+    assert!(artwork.tags[1].selected);
     assert_eq!(artwork.tags[1].color, ArgbColor::new(255, 0, 0, 255));
     assert_eq!(artwork.tags[1].direction, AnimationDirection::Backward);
     assert_eq!(artwork.tags[1].loop_count, 1);
-    assert_eq!(artwork.tags[1].enabled, true);
+    assert!(artwork.tags[1].enabled);
     // Tag3
     assert_eq!(artwork.tags[2].name, "Tag3");
     assert_eq!(artwork.tags[2].start_index, 4);
     assert_eq!(artwork.tags[2].end_index, 5);
-    assert_eq!(artwork.tags[2].selected, false);
+    assert!(!artwork.tags[2].selected);
     assert_eq!(artwork.tags[2].color, ArgbColor::new(0, 0, 0, 255));
     assert_eq!(artwork.tags[2].direction, AnimationDirection::PingPong);
     assert_eq!(artwork.tags[2].loop_count, 3);
-    assert_eq!(artwork.tags[2].enabled, false);
+    assert!(!artwork.tags[2].enabled);
     // Tag4
     assert_eq!(artwork.tags[3].name, "Tag4");
     assert_eq!(artwork.tags[3].start_index, 6);
     assert_eq!(artwork.tags[3].end_index, 7);
-    assert_eq!(artwork.tags[3].selected, false);
+    assert!(!artwork.tags[3].selected);
     assert_eq!(artwork.tags[3].color, ArgbColor::new(0, 0, 0, 255));
     assert_eq!(artwork.tags[3].direction, AnimationDirection::PingPong);
     assert_eq!(artwork.tags[3].loop_count, 0);
-    assert_eq!(artwork.tags[3].enabled, true);
+    assert!(artwork.tags[3].enabled);
 
     // check for unspecified data in binary-spec.
     assert!(artwork.tags[0].remaining_data.is_empty());
@@ -4839,12 +4839,12 @@ mod tests {
     assert_eq!(artwork.tilemap_layers[0].name, "Tilemap Layer 1");
     assert_eq!(artwork.tilemap_layers[0].frames.len(), 2);
     assert_eq!(artwork.tilemap_layers[0].opacity, f16::from_f32(1.));
-    assert_eq!(artwork.tilemap_layers[0].visible, true);
-    assert_eq!(artwork.tilemap_layers[0].locked, false);
-    assert_eq!(artwork.tilemap_layers[0].selected, true);
-    assert_eq!(artwork.tilemap_layers[0].alpha_locked, false);
+    assert!(artwork.tilemap_layers[0].visible);
+    assert!(!artwork.tilemap_layers[0].locked);
+    assert!(artwork.tilemap_layers[0].selected);
+    assert!(!artwork.tilemap_layers[0].alpha_locked);
     assert_eq!(artwork.tilemap_layers[0].blend_mode, BlendMode::Normal);
-    assert_eq!(artwork.tilemap_layers[0].linked, false);
+    assert!(!artwork.tilemap_layers[0].linked);
     assert_eq!(
       artwork.tilemap_layers[0].color,
       ArgbColor::new(0, 255, 0, 255)
@@ -4853,23 +4853,23 @@ mod tests {
     assert_eq!(artwork.tilemap_layers[1].name, "Tilemap Layer 2");
     assert_eq!(artwork.tilemap_layers[1].frames.len(), 2);
     assert_eq!(artwork.tilemap_layers[1].opacity, f16::from_f32(0.8100586));
-    assert_eq!(artwork.tilemap_layers[1].visible, true);
-    assert_eq!(artwork.tilemap_layers[1].locked, true);
-    assert_eq!(artwork.tilemap_layers[1].selected, false);
-    assert_eq!(artwork.tilemap_layers[1].alpha_locked, false);
+    assert!(artwork.tilemap_layers[1].visible);
+    assert!(artwork.tilemap_layers[1].locked);
+    assert!(!artwork.tilemap_layers[1].selected);
+    assert!(!artwork.tilemap_layers[1].alpha_locked);
     assert_eq!(artwork.tilemap_layers[1].blend_mode, BlendMode::Normal);
-    assert_eq!(artwork.tilemap_layers[1].linked, true);
+    assert!(artwork.tilemap_layers[1].linked);
     assert_eq!(artwork.tilemap_layers[1].color, ArgbColor::default());
     // Tilemap Layer 3
     assert_eq!(artwork.tilemap_layers[2].name, "Tilemap Layer 3");
     assert_eq!(artwork.tilemap_layers[2].frames.len(), 2);
     assert_eq!(artwork.tilemap_layers[2].opacity, f16::from_f32(1.));
-    assert_eq!(artwork.tilemap_layers[2].visible, false);
-    assert_eq!(artwork.tilemap_layers[2].locked, false);
-    assert_eq!(artwork.tilemap_layers[2].selected, false);
-    assert_eq!(artwork.tilemap_layers[2].alpha_locked, true);
+    assert!(!artwork.tilemap_layers[2].visible);
+    assert!(!artwork.tilemap_layers[2].locked);
+    assert!(!artwork.tilemap_layers[2].selected);
+    assert!(artwork.tilemap_layers[2].alpha_locked);
     assert_eq!(artwork.tilemap_layers[2].blend_mode, BlendMode::Normal);
-    assert_eq!(artwork.tilemap_layers[2].linked, false);
+    assert!(!artwork.tilemap_layers[2].linked);
     assert_eq!(artwork.tilemap_layers[2].color, ArgbColor::default());
 
     // check for unspecified data in binary-spec.
@@ -4924,8 +4924,8 @@ mod tests {
     };
     assert_eq!(content.size, Size::new(20, 20));
     assert_eq!(content.color, ArgbColor::new(0, 0, 255, 255));
-    assert_eq!(content.visible, true);
-    assert_eq!(content.is_shown_in_preview, false);
+    assert!(content.visible);
+    assert!(!content.is_shown_in_preview);
 
     // check for unspecified data in binary-spec.
     assert!(content.remaining_data.is_empty());
@@ -4945,9 +4945,9 @@ mod tests {
     };
     assert_eq!(content.size, Size::new(18, 18));
     assert_eq!(content.color, ArgbColor::new(0, 0, 255, 255));
-    assert_eq!(content.visible, true);
-    assert_eq!(content.is_shown_in_preview, true);
-    assert_eq!(content.is_shown_vertical_line, false);
+    assert!(content.visible);
+    assert!(content.is_shown_in_preview);
+    assert!(!content.is_shown_vertical_line);
 
     // check for unspecified data in binary-spec.
     assert!(content.remaining_data.is_empty());
@@ -4975,8 +4975,8 @@ mod tests {
         ArgbColor::new(255, 0, 0, 255)
       ]
     );
-    assert_eq!(content.visible, true);
-    assert_eq!(content.is_shown_in_preview, false);
+    assert!(content.visible);
+    assert!(!content.is_shown_in_preview);
 
     // check for unspecified data in binary-spec.
     assert!(content.remaining_data.is_empty());
@@ -4995,10 +4995,10 @@ mod tests {
     let PostProcessor::Crt(content) = &artwork.post_processors[0] else {
       panic!("expected PostProcessor::Crt");
     };
-    assert_eq!(content.is_pixel_independent, true);
+    assert!(content.is_pixel_independent);
     assert_eq!(content.scan_line_intensity, 0.1);
     assert_eq!(content.glow_intensity, 0.17);
-    assert_eq!(content.enabled, true);
+    assert!(content.enabled);
 
     // check for unspecified data in binary-spec.
     assert!(content.remaining_data.is_empty());
@@ -5017,18 +5017,18 @@ mod tests {
     let PostProcessor::Vignette(content) = &artwork.post_processors[0] else {
       panic!("expected PostProcessor::Vignette");
     };
-    assert_eq!(content.is_pixel_independent, false);
+    assert!(!content.is_pixel_independent);
     assert_eq!(content.color, ArgbColor::new(0, 255, 0, 255));
     assert_eq!(content.intensity, 0.8);
-    assert_eq!(content.enabled, true);
+    assert!(content.enabled);
     let PostProcessor::Bloom(content) = &artwork.post_processors[1] else {
       panic!("expected PostProcessor::Bloom");
     };
-    assert_eq!(content.is_pixel_independent, true);
+    assert!(content.is_pixel_independent);
     assert_eq!(content.threshold, 0.4549019607843137);
     assert_eq!(content.intensity, 0.3);
     assert_eq!(content.radius, 0.04);
-    assert_eq!(content.enabled, true);
+    assert!(content.enabled);
 
     // check for unspecified data in binary-spec.
     assert!(content.remaining_data.is_empty());
@@ -5047,10 +5047,10 @@ mod tests {
     let PostProcessor::RoundPixel(content) = &artwork.post_processors[0] else {
       panic!("expected PostProcessor::RoundPixel");
     };
-    assert_eq!(content.is_contiguous, true);
+    assert!(content.is_contiguous);
     assert_eq!(content.background_color, ArgbColor::new(0, 0, 255, 255));
     assert_eq!(content.intensity, 0.45);
-    assert_eq!(content.enabled, true);
+    assert!(content.enabled);
 
     // check for unspecified data in binary-spec.
     assert!(content.remaining_data.is_empty());
@@ -5065,7 +5065,7 @@ mod tests {
     assert!(file.is_ok());
 
     let artwork = file.unwrap();
-    assert_eq!(artwork.is_need_timelapse, true);
+    assert!(artwork.is_need_timelapse);
   }
 
   #[test]
@@ -5117,7 +5117,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5131,7 +5131,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5145,7 +5145,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5159,7 +5159,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5173,7 +5173,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5187,7 +5187,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5201,7 +5201,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5215,7 +5215,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5229,7 +5229,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5243,7 +5243,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5257,7 +5257,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5271,7 +5271,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5285,7 +5285,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5299,7 +5299,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5313,7 +5313,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5327,7 +5327,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5341,7 +5341,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5355,7 +5355,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5369,7 +5369,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5383,7 +5383,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5397,7 +5397,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5411,7 +5411,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5425,7 +5425,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5439,7 +5439,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5453,7 +5453,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 
@@ -5467,7 +5467,7 @@ mod tests {
     let result = original_file.write(&mut written_file_data);
     assert!(result.is_ok());
 
-    let file = Artwork::read(&mut written_file_data);
+    let file = Artwork::read(&written_file_data);
     assert!(file.is_ok());
   }
 

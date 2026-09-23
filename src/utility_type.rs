@@ -63,7 +63,7 @@ impl<'a> RenderPlan<'a> {
   }
 
   fn build_children(
-    entries: &'a Vec<Entry>,
+    entries: &'a [Entry],
     artwork: &'a Artwork,
     frame_index: usize,
     visibility: LayerVisibility,
@@ -162,7 +162,7 @@ impl<'a> RenderPlan<'a> {
 
           let plan = RenderPlan::RegularLayer {
             layer,
-            frame: &frame,
+            frame,
             content,
             base_index,
             has_clipping_masks: !layer.clipping_masks.is_empty(),
@@ -233,7 +233,7 @@ impl<'a> RenderPlan<'a> {
 
   pub(crate) fn render_onto(
     &self,
-    mut backdrop: &mut [ArgbColor],
+    backdrop: &mut [ArgbColor],
   ) -> Result<(), ArtworkOperationError> {
     match self {
       Self::Group {
@@ -262,7 +262,7 @@ impl<'a> RenderPlan<'a> {
           }
         }
 
-        batch_normal_in_place(&offscreen, &mut backdrop)?;
+        batch_normal_in_place(&offscreen, backdrop)?;
 
         Ok(())
       }
@@ -298,7 +298,7 @@ impl<'a> RenderPlan<'a> {
 
         batch_blend_with_in_place(
           &foreground,
-          &mut backdrop,
+          backdrop,
           self.effective_blend_mode().into(),
           PorterDuff::SourceOver,
         )?;
@@ -329,7 +329,7 @@ impl<'a> RenderPlan<'a> {
 
           let tile_data = &tileset._tile_images[tile_index as usize];
 
-          for tile_pixel_index in 0..tile_data.len() {
+          for (tile_pixel_index, tile_color) in tile_data.iter().enumerate() {
             let tile_x = tile_pixel_index % content.tile_size.width as usize;
             let tile_y = tile_pixel_index / content.tile_size.width as usize;
 
@@ -337,7 +337,7 @@ impl<'a> RenderPlan<'a> {
             let canvas_y = grid_y * content.tile_size.height as usize + tile_y;
             let canvas_index = canvas_y * canvas_size.width as usize + canvas_x;
 
-            frame_data[canvas_index] = tile_data[tile_pixel_index];
+            frame_data[canvas_index] = *tile_color;
           }
         }
 
@@ -349,7 +349,7 @@ impl<'a> RenderPlan<'a> {
 
         batch_blend_with_in_place(
           &frame_data,
-          &mut backdrop,
+          backdrop,
           layer.blend_mode.into(),
           PorterDuff::SourceOver,
         )?;

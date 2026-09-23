@@ -75,9 +75,7 @@ pub(crate) fn create_bloom_difference(
 }
 
 fn apply_bloom_threshold(value: f64, threshold: f64) -> f64 {
-  if value <= threshold {
-    0.
-  } else if threshold >= 1. {
+  if value <= threshold || threshold >= 1. {
     0.
   } else {
     (value - threshold) / (1. - threshold)
@@ -158,7 +156,7 @@ fn create_gaussian_kernel(sigma: f64) -> (isize, Vec<f64>) {
   let total: f64 = kernel.iter().sum();
 
   for weight in &mut kernel {
-    *weight = *weight / total;
+    *weight /= total;
   }
 
   (radius as isize, kernel)

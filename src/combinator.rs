@@ -34,7 +34,7 @@ pub(crate) fn string(input: &[u8]) -> PPResult<&[u8], String> {
 
 /// Combinator(complete version) for 16-bit float.
 pub(crate) fn float16(input: &[u8]) -> PPResult<&[u8], f16> {
-  le_u16.map(|bits| f16::from_bits(bits)).parse(input)
+  le_u16.map(f16::from_bits).parse(input)
 }
 
 /// Combinator(complete version) for a boolean value, 1 byte.
