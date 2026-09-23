@@ -2,6 +2,12 @@
 name = "pixquare-io"
 version = "0.1.0"
 edition = "2024"
+authors = ["kudohamu"]
+description = "A Crate for reading/writing Pixquare files"
+repository = "https://github.com/kudohamu/pixquare-io_rs"
+license = "MIT OR Apache-2.0"
+keywords = ["pixquare", "pixel-art"]
+categories = ["graphics", "parser-implementations"]
 
 [lib]
 name = "pixquare"
