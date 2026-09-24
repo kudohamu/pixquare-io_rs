@@ -136,5 +136,5 @@ pub(crate) fn corners(input: &[u8]) -> PPResult<&[u8], Corners> {
 
 /// Combinator(complete version) for BlendMode.
 pub(crate) fn blend_mode(input: &[u8]) -> PPResult<&[u8], BlendMode> {
-  map_res(le_u16, |v| v.try_into()).parse(input)
+  map(le_u16, |v| v.into()).parse(input)
 }

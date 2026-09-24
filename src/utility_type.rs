@@ -276,7 +276,10 @@ impl<'a> RenderPlan<'a> {
         canvas_size,
         ..
       } => {
-        let mut foreground = content._image.clone();
+        let Some(image) = &content._image else {
+          return Ok(());
+        };
+        let mut foreground = image.clone();
 
         for fx in &layer.fxs {
           foreground = fx.apply(&foreground, canvas_size)?;
@@ -313,6 +316,10 @@ impl<'a> RenderPlan<'a> {
         canvas_size,
         ..
       } => {
+        let Some(tile_images) = &tileset._tile_images else {
+          return Ok(());
+        };
+
         let canvas_pixel_len = (canvas_size.width * canvas_size.height) as usize;
         let mut frame_data = vec![ArgbColor::TRANSPARENT; canvas_pixel_len];
         let grid_width = (canvas_size.width / content.tile_size.width) as usize;
@@ -327,7 +334,7 @@ impl<'a> RenderPlan<'a> {
           let grid_x = grid_index % grid_width;
           let grid_y = grid_index / grid_width;
 
-          let tile_data = &tileset._tile_images[tile_index as usize];
+          let tile_data = &tile_images[tile_index as usize];
 
           for (tile_pixel_index, tile_color) in tile_data.iter().enumerate() {
             let tile_x = tile_pixel_index % content.tile_size.width as usize;

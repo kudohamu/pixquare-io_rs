@@ -6,7 +6,7 @@ use msgw3c::{batch_blend_with_in_place, composite::PorterDuff};
 use nom::{
   Parser,
   bytes::complete::take,
-  combinator::map_res,
+  combinator::map,
   error::ErrorKind,
   multi::many0,
   number::complete::{le_f32, le_f64, le_i16, le_u8, le_u16, le_u32, le_u64},
@@ -75,8 +75,7 @@ impl CustomDataHeader {
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(16usize).parse(input)?;
 
-    let (_input, (data_size, data_type)) =
-      (le_u64, le_u8.map_res(|b| b.try_into())).parse(input)?;
+    let (_input, (data_size, data_type)) = (le_u64, map(le_u8, |b| b.into())).parse(input)?;
 
     Ok((
       rest,
@@ -141,11 +140,55 @@ impl ModelMarshal for CustomDataStringContent {
   }
 }
 
+/// Content data of unknown CustomData.
+#[derive(Debug, Clone)]
+pub struct CustomDataUnknownContent {
+  data_type_value: u8,
+  remaining_data: Vec<u8>,
+}
+
+impl<'a> CustomDataUnknownContent {
+  fn parser(
+    data_size: usize,
+    data_type_value: u8,
+  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
+    move |input: &'a [u8]| {
+      let (rest, input) = take(data_size).parse(input)?;
+
+      Ok((
+        rest,
+        Self {
+          data_type_value,
+          remaining_data: input.into(),
+        },
+      ))
+    }
+  }
+}
+
+impl ModelMarshal for CustomDataUnknownContent {
+  type Header = CustomDataHeader;
+  const HEADER_SIZE: usize = 16usize;
+
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
+
+    let data_size = w.written_bytes();
+    let header = CustomDataHeader {
+      data_size: data_size as u64,
+      data_type: CustomDataType::Unknown(self.data_type_value),
+    };
+
+    Ok(header)
+  }
+}
+
 /// Store some custom data set by the users.
 /// <https://docs.pixquare.art/pixquare-file/binary-specs#content>
 #[derive(Debug, Clone)]
 pub enum CustomData {
   String(CustomDataStringContent),
+  Unknown(CustomDataUnknownContent),
 }
 
 impl CustomData {
@@ -159,6 +202,12 @@ impl CustomData {
 
         Ok((input, Self::String(content)))
       }
+      CustomDataType::Unknown(v) => {
+        let (input, content) =
+          CustomDataUnknownContent::parser(header.data_size as usize, v).parse(input)?;
+
+        Ok((input, Self::Unknown(content)))
+      }
     }
   }
 }
@@ -167,6 +216,9 @@ impl Marshal for CustomData {
   fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
     match self {
       CustomData::String(content) => {
+        content.marshal(w)?;
+      }
+      CustomData::Unknown(content) => {
         content.marshal(w)?;
       }
     }
@@ -232,7 +284,7 @@ pub struct FrameContent {
   pub id: String,
   pub color_bytes: Vec<u8>,
   remaining_data: Vec<u8>,
-  pub _image: Vec<ArgbColor>,
+  pub(crate) _image: Option<Vec<ArgbColor>>,
 }
 
 impl FrameContent {
@@ -248,7 +300,7 @@ impl FrameContent {
           .parse(&self.color_bytes)
           .map_err(|_e| ArtworkOperationError::InvalidColorData)?;
 
-        self._image = image;
+        self._image = Some(image);
       }
       ColorDepth::Indexed => {
         let image: Result<Vec<ArgbColor>, ArtworkOperationError> = self
@@ -269,7 +321,10 @@ impl FrameContent {
 
         let image = image?;
 
-        self._image = image;
+        self._image = Some(image);
+      }
+      ColorDepth::Unknown(_) => {
+        self._image = None;
       }
     }
 
@@ -290,7 +345,7 @@ impl FrameContent {
         id: id.to_string(),
         color_bytes,
         remaining_data: remaining_data.into(),
-        _image: Vec::new(),
+        _image: None,
       },
     ))
   }
@@ -633,7 +688,7 @@ impl SymmetryLine {
       le_f32,
       le_f32,
       le_u8,
-      map_res(le_u8, |b| b.try_into()),
+      map(le_u8, |b| b.into()),
     )
       .parse(input)?;
 
@@ -765,7 +820,7 @@ impl Tag {
       le_u16,
       bool,
       argb_color,
-      map_res(le_u8, |b| b.try_into()),
+      map(le_u8, |b| b.into()),
       le_u16,
       bool,
     )
@@ -833,7 +888,7 @@ impl TilesetPaletteOrganizationHeader {
     let (rest, input) = take(32usize).parse(input)?;
 
     let (_input, (data_size, organization_type)) =
-      (le_u32, map_res(le_u8, |b| b.try_into())).parse(input)?;
+      (le_u32, map(le_u8, |b| b.into())).parse(input)?;
 
     Ok((
       rest,
@@ -913,6 +968,47 @@ impl ModelMarshal for TilesetPaletteOrganizationAnywhereContent {
   }
 }
 
+/// Content data of unknown TilesetPaletteOrganization.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TilesetPaletteOrganizationUnknownContent {
+  data_type_value: u8,
+  remaining_data: Vec<u8>,
+}
+
+impl<'a> TilesetPaletteOrganizationUnknownContent {
+  fn parser(
+    data_size: usize,
+    data_type_value: u8,
+  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
+    move |input: &'a [u8]| {
+      let (rest, remaining_data) = take(data_size).parse(input)?;
+
+      Ok((
+        rest,
+        Self {
+          data_type_value,
+          remaining_data: remaining_data.into(),
+        },
+      ))
+    }
+  }
+}
+
+impl ModelMarshal for TilesetPaletteOrganizationUnknownContent {
+  type Header = TilesetPaletteOrganizationHeader;
+  const HEADER_SIZE: usize = 32usize;
+
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
+
+    let data_size = w.written_bytes();
+    Ok(Self::Header {
+      data_size: data_size as u32,
+      organization_type: PaletteOrganizationType::Unknown(self.data_type_value),
+    })
+  }
+}
+
 /// PaletteOrganization settings for Tileset.
 /// This model is not listed in the official binary-spec.
 /// (This is the data structure I analyzed from real binary data :))
@@ -920,6 +1016,7 @@ impl ModelMarshal for TilesetPaletteOrganizationAnywhereContent {
 pub enum TilesetPaletteOrganization {
   Packed,
   Anywhere(TilesetPaletteOrganizationAnywhereContent),
+  Unknown(TilesetPaletteOrganizationUnknownContent),
 }
 
 impl TilesetPaletteOrganization {
@@ -935,6 +1032,13 @@ impl TilesetPaletteOrganization {
 
         Ok((input, Self::Anywhere(content)))
       }
+      PaletteOrganizationType::Unknown(v) => {
+        let (input, content) =
+          TilesetPaletteOrganizationUnknownContent::parser(header.data_size as usize, v)
+            .parse(input)?;
+
+        Ok((input, Self::Unknown(content)))
+      }
     }
   }
 }
@@ -948,6 +1052,11 @@ impl Marshal for TilesetPaletteOrganization {
         Ok(())
       }
       TilesetPaletteOrganization::Anywhere(content) => {
+        content.marshal(w)?;
+
+        Ok(())
+      }
+      TilesetPaletteOrganization::Unknown(content) => {
         content.marshal(w)?;
 
         Ok(())
@@ -1001,7 +1110,7 @@ pub struct Tileset {
   /// The palette organization for this tileset.
   pub palette_organization: TilesetPaletteOrganization,
   remaining_data: Vec<u8>,
-  pub _tile_images: Vec<Vec<ArgbColor>>,
+  pub(crate) _tile_images: Option<Vec<Vec<ArgbColor>>>,
 }
 
 impl Tileset {
@@ -1027,7 +1136,7 @@ impl Tileset {
 
         let tile_images = tile_images?;
 
-        self._tile_images = tile_images;
+        self._tile_images = Some(tile_images);
       }
       ColorDepth::Indexed => {
         let tile_images: Result<Vec<Vec<ArgbColor>>, ArtworkOperationError> = self
@@ -1053,7 +1162,10 @@ impl Tileset {
 
         let tile_images = tile_images?;
 
-        self._tile_images = tile_images;
+        self._tile_images = Some(tile_images);
+      }
+      ColorDepth::Unknown(_) => {
+        self._tile_images = None;
       }
     }
 
@@ -1089,7 +1201,7 @@ impl Tileset {
         grid_color,
         palette_organization,
         remaining_data: remaining_data.into(),
-        _tile_images: Vec::new(),
+        _tile_images: None,
       },
     ))
   }
@@ -1165,7 +1277,7 @@ impl FxHeader {
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(16usize).parse(input)?;
 
-    let (_input, (data_size, fx_type)) = (le_u64, le_u8.map_res(|b| b.try_into())).parse(input)?;
+    let (_input, (data_size, fx_type)) = (le_u64, le_u8.map(|b| b.into())).parse(input)?;
 
     Ok((rest, Self { data_size, fx_type }))
   }
@@ -1571,6 +1683,47 @@ impl ModelMarshal for FxPatternOverlayContent {
   }
 }
 
+/// Content data of unknown Fx.
+#[derive(Debug, Clone)]
+pub struct FxUnknownContent {
+  data_type_value: u8,
+  remaining_data: Vec<u8>,
+}
+
+impl<'a> FxUnknownContent {
+  fn parser(
+    data_size: usize,
+    data_type_value: u8,
+  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
+    move |input: &'a [u8]| {
+      let (rest, remaining_data) = take(data_size).parse(input)?;
+
+      Ok((
+        rest,
+        Self {
+          data_type_value,
+          remaining_data: remaining_data.into(),
+        },
+      ))
+    }
+  }
+}
+
+impl ModelMarshal for FxUnknownContent {
+  type Header = FxHeader;
+  const HEADER_SIZE: usize = 16usize;
+
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
+
+    let data_size = w.written_bytes();
+    Ok(FxHeader {
+      data_size: data_size as u64,
+      fx_type: FxType::Unknown(self.data_type_value),
+    })
+  }
+}
+
 /// Rendering Effect.
 /// <https://docs.pixquare.art/pixquare-file/binary-specs#content-7>
 #[derive(Debug, Clone)]
@@ -1579,6 +1732,7 @@ pub enum Fx {
   Outline(FxOutlineContent),
   AntiAliasing(FxAntiAliasingContent),
   PatternOverlay(FxPatternOverlayContent),
+  Unknown(FxUnknownContent),
 }
 
 impl Fx {
@@ -1609,6 +1763,12 @@ impl Fx {
 
         Ok((input, Fx::PatternOverlay(content)))
       }
+      FxType::Unknown(v) => {
+        let (input, content) =
+          FxUnknownContent::parser(header.data_size as usize, v).parse(input)?;
+
+        Ok((input, Fx::Unknown(content)))
+      }
     }
   }
 
@@ -1622,6 +1782,7 @@ impl Fx {
       Self::Outline(content) => content.apply(source, canvas_size),
       Self::AntiAliasing(content) => content.apply(source, canvas_size),
       Self::PatternOverlay(content) => content.apply(source, canvas_size),
+      Self::Unknown(_) => Ok(source.into()),
     }
   }
 }
@@ -1639,6 +1800,9 @@ impl Marshal for Fx {
         content.marshal(w)?;
       }
       Fx::PatternOverlay(content) => {
+        content.marshal(w)?;
+      }
+      Fx::Unknown(content) => {
         content.marshal(w)?;
       }
     }
@@ -1662,8 +1826,7 @@ impl EntryHeader {
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(16usize).parse(input)?;
 
-    let (_input, (data_size, entry_type)) =
-      (le_u32, map_res(le_u8, |b| b.try_into())).parse(input)?;
+    let (_input, (data_size, entry_type)) = (le_u32, map(le_u8, |b| b.into())).parse(input)?;
 
     Ok((
       rest,
@@ -2492,7 +2655,7 @@ impl GuideLineHeader {
     let (rest, input) = take(14usize).parse(input)?;
 
     let (_input, (_compat, data_size, guide_line_type)) =
-      (le_u32, le_u16, map_res(le_u8, |b| b.try_into())).parse(input)?;
+      (le_u32, le_u16, map(le_u8, |b| b.into())).parse(input)?;
 
     Ok((
       rest,
@@ -2702,6 +2865,48 @@ impl ModelMarshal for GuideLinePerspectiveContent {
   }
 }
 
+/// Content data of unknown GuideLine.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GuideLineUnknownContent {
+  data_type_value: u8,
+  remaining_data: Vec<u8>,
+}
+
+impl<'a> GuideLineUnknownContent {
+  fn parser(
+    data_size: usize,
+    data_type_value: u8,
+  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
+    move |input: &'a [u8]| {
+      let (rest, remaining_data) = take(data_size).parse(input)?;
+
+      Ok((
+        rest,
+        Self {
+          data_type_value,
+          remaining_data: remaining_data.into(),
+        },
+      ))
+    }
+  }
+}
+
+impl ModelMarshal for GuideLineUnknownContent {
+  type Header = GuideLineHeader;
+  const HEADER_SIZE: usize = 14usize;
+
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
+
+    let data_size = w.written_bytes();
+    Ok(GuideLineHeader {
+      _compat: 0,
+      data_size: data_size as u16,
+      guide_line_type: GuideLineType::Unknown(self.data_type_value),
+    })
+  }
+}
+
 /// Settings data of GuideLine.
 /// <https://docs.pixquare.art/pixquare-file/binary-specs#content-14>
 #[derive(Debug, Clone, PartialEq)]
@@ -2709,6 +2914,7 @@ pub enum GuideLine {
   Grid(GuideLineGridContent),
   Isometric(GuideLineIsometricContent),
   Perspective(GuideLinePerspectiveContent),
+  Unknown(GuideLineUnknownContent),
 }
 
 impl GuideLine {
@@ -2734,6 +2940,12 @@ impl GuideLine {
 
         Ok((input, Self::Perspective(content)))
       }
+      GuideLineType::Unknown(v) => {
+        let (input, content) =
+          GuideLineUnknownContent::parser(header.data_size as usize, v).parse(input)?;
+
+        Ok((input, Self::Unknown(content)))
+      }
     }
   }
 }
@@ -2756,6 +2968,11 @@ impl Marshal for GuideLine {
 
         Ok(())
       }
+      GuideLine::Unknown(content) => {
+        content.marshal(w)?;
+
+        Ok(())
+      }
     }
   }
 }
@@ -2774,8 +2991,7 @@ impl PostProcessorHeader {
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(16usize).parse(input)?;
 
-    let (_input, (data_size, processor_type)) =
-      (le_u16, map_res(le_u8, |b| b.try_into())).parse(input)?;
+    let (_input, (data_size, processor_type)) = (le_u16, map(le_u8, |b| b.into())).parse(input)?;
 
     Ok((
       rest,
@@ -3098,6 +3314,47 @@ impl ModelMarshal for PostProcessorRoundPixelContent {
   }
 }
 
+/// Content data of unknown Post-processor.
+#[derive(Debug, Clone)]
+pub struct PostProcessorUnknownContent {
+  data_type_value: u8,
+  remaining_data: Vec<u8>,
+}
+
+impl<'a> PostProcessorUnknownContent {
+  fn parser(
+    data_size: usize,
+    data_type_value: u8,
+  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
+    move |input: &'a [u8]| {
+      let (rest, remaining_data) = take(data_size).parse(input)?;
+
+      Ok((
+        rest,
+        Self {
+          data_type_value,
+          remaining_data: remaining_data.into(),
+        },
+      ))
+    }
+  }
+}
+
+impl ModelMarshal for PostProcessorUnknownContent {
+  type Header = PostProcessorHeader;
+  const HEADER_SIZE: usize = 16usize;
+
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
+
+    let data_size = w.written_bytes();
+    Ok(PostProcessorHeader {
+      data_size: data_size as u16,
+      processor_type: ProcessorType::Unknown(self.data_type_value),
+    })
+  }
+}
+
 /// Settings data of Post-processor.
 #[derive(Debug, Clone)]
 pub enum PostProcessor {
@@ -3105,6 +3362,7 @@ pub enum PostProcessor {
   Vignette(PostProcessorVignetteContent),
   Bloom(PostProcessorBloomContent),
   RoundPixel(PostProcessorRoundPixelContent),
+  Unknown(PostProcessorUnknownContent),
 }
 
 impl PostProcessor {
@@ -3114,9 +3372,11 @@ impl PostProcessor {
     canvas_size: &Size,
   ) -> Result<(), ArtworkOperationError> {
     match self {
+      Self::Crt(_) => Ok(()),
       Self::Vignette(content) => content.apply(target, canvas_size),
       Self::Bloom(content) => content.apply(target, canvas_size),
-      _ => Ok(()),
+      Self::RoundPixel(_) => Ok(()),
+      Self::Unknown(_) => Ok(()),
     }
   }
 
@@ -3148,6 +3408,12 @@ impl PostProcessor {
 
         Ok((input, Self::RoundPixel(content)))
       }
+      ProcessorType::Unknown(v) => {
+        let (input, content) =
+          PostProcessorUnknownContent::parser(header.data_size as usize, v).parse(input)?;
+
+        Ok((input, Self::Unknown(content)))
+      }
     }
   }
 }
@@ -3171,6 +3437,10 @@ impl Marshal for PostProcessor {
         content.marshal(w)?;
         Ok(())
       }
+      PostProcessor::Unknown(content) => {
+        content.marshal(w)?;
+        Ok(())
+      }
     }
   }
 }
@@ -3188,8 +3458,7 @@ impl ModifierHeader {
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, input) = take(16usize).parse(input)?;
 
-    let (_input, (data_size, modifier_type)) =
-      (le_u64, map_res(le_u8, |b| b.try_into())).parse(input)?;
+    let (_input, (data_size, modifier_type)) = (le_u64, map(le_u8, |b| b.into())).parse(input)?;
 
     Ok((
       rest,
@@ -3260,10 +3529,52 @@ impl ModelMarshal for ModifierAnimationSpeedMultiplierContent {
   }
 }
 
+/// Content data of Animation speed multiplier for Modifier.
+#[derive(Debug, Clone)]
+pub struct ModifierUnknownContent {
+  data_type_value: u8,
+  remaining_data: Vec<u8>,
+}
+
+impl<'a> ModifierUnknownContent {
+  fn parser(
+    data_size: usize,
+    data_type_value: u8,
+  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
+    move |input: &'a [u8]| {
+      let (rest, remaining_data) = take(data_size).parse(input)?;
+
+      Ok((
+        rest,
+        Self {
+          data_type_value,
+          remaining_data: remaining_data.into(),
+        },
+      ))
+    }
+  }
+}
+
+impl ModelMarshal for ModifierUnknownContent {
+  type Header = ModifierHeader;
+  const HEADER_SIZE: usize = 16usize;
+
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
+
+    let data_size = w.written_bytes();
+    Ok(ModifierHeader {
+      data_size: data_size as u64,
+      modifier_type: ModifierType::Unknown(self.data_type_value),
+    })
+  }
+}
+
 /// <https://docs.pixquare.art/pixquare-file/binary-specs#content-16>
 #[derive(Debug, Clone)]
 pub enum Modifier {
   AnimationSpeedMultiplier(ModifierAnimationSpeedMultiplierContent),
+  Unknown(ModifierUnknownContent),
 }
 
 impl Modifier {
@@ -3278,6 +3589,12 @@ impl Modifier {
 
         Ok((input, Self::AnimationSpeedMultiplier(content)))
       }
+      ModifierType::Unknown(v) => {
+        let (input, content) =
+          ModifierUnknownContent::parser(header.data_size as usize, v).parse(input)?;
+
+        Ok((input, Self::Unknown(content)))
+      }
     }
   }
 }
@@ -3286,6 +3603,11 @@ impl Marshal for Modifier {
   fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
     match self {
       Modifier::AnimationSpeedMultiplier(content) => {
+        content.marshal(w)?;
+
+        Ok(())
+      }
+      Modifier::Unknown(content) => {
         content.marshal(w)?;
 
         Ok(())
@@ -3309,7 +3631,7 @@ impl PaletteOrganizationHeader {
     let (rest, input) = take(16usize).parse(input)?;
 
     let (_input, (data_size, organization_type)) =
-      (le_u16, map_res(le_u8, |b| b.try_into())).parse(input)?;
+      (le_u16, map(le_u8, |b| b.into())).parse(input)?;
 
     Ok((
       rest,
@@ -3397,11 +3719,53 @@ impl ModelMarshal for PaletteOrganizationAnywhereContent {
   }
 }
 
+/// Content data of unknown PaletteOrganization.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PaletteOrganizationUnknownContent {
+  data_type_value: u8,
+  remaining_data: Vec<u8>,
+}
+
+impl<'a> PaletteOrganizationUnknownContent {
+  fn parser(
+    data_size: usize,
+    data_type_value: u8,
+  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
+    move |input: &'a [u8]| {
+      let (rest, remaining_data) = take(data_size).parse(input)?;
+
+      Ok((
+        rest,
+        Self {
+          data_type_value,
+          remaining_data: remaining_data.into(),
+        },
+      ))
+    }
+  }
+}
+
+impl ModelMarshal for PaletteOrganizationUnknownContent {
+  type Header = PaletteOrganizationHeader;
+  const HEADER_SIZE: usize = 16usize;
+
+  fn write_data<W: CountingWrite>(&self, mut w: &mut W) -> PMResult<Self::Header> {
+    TypeN::new(&self.remaining_data).marshal(&mut w)?;
+
+    let data_size = w.written_bytes();
+    Ok(PaletteOrganizationHeader {
+      data_size: data_size as u16,
+      organization_type: PaletteOrganizationType::Unknown(self.data_type_value),
+    })
+  }
+}
+
 /// <https://docs.pixquare.art/pixquare-file/binary-specs#content-17>
 #[derive(Debug, Clone, PartialEq)]
 pub enum PaletteOrganization {
   Packed,
   Anywhere(PaletteOrganizationAnywhereContent),
+  Unknown(PaletteOrganizationUnknownContent),
 }
 
 impl PaletteOrganization {
@@ -3416,6 +3780,12 @@ impl PaletteOrganization {
 
         Ok((input, Self::Anywhere(content)))
       }
+      PaletteOrganizationType::Unknown(v) => {
+        let (input, content) =
+          PaletteOrganizationUnknownContent::parser(header.data_size as usize, v).parse(input)?;
+
+        Ok((input, Self::Unknown(content)))
+      }
     }
   }
 }
@@ -3429,6 +3799,11 @@ impl Marshal for PaletteOrganization {
         Ok(())
       }
       PaletteOrganization::Anywhere(content) => {
+        content.marshal(w)?;
+
+        Ok(())
+      }
+      PaletteOrganization::Unknown(content) => {
         content.marshal(w)?;
 
         Ok(())
@@ -3683,7 +4058,7 @@ impl<'a> Artwork {
         array_type(TilemapLayer::parse),
         array_type(TilemapFrameContent::parse),
       ),
-      map_res(le_u8, |b| b.try_into()),
+      map(le_u8, |b| b.into()),
       Stats::parse,
       le_u8,
       CanvasGrid::parse,
@@ -4277,9 +4652,19 @@ mod tests {
     assert!(file.is_ok());
 
     let artwork = file.unwrap();
-    let CustomData::String(content) = &artwork.layers[0].frames[0].custom_datas[0];
+    let CustomData::String(content) = &artwork.layers[0].frames[0].custom_datas[0] else {
+      panic!(
+        "expected CustomData::String, actual {:?}",
+        &artwork.layers[1].fxs[0]
+      );
+    };
     assert_eq!(content.content, "foo");
-    let CustomData::String(content) = &artwork.layers[0].frames[1].custom_datas[0];
+    let CustomData::String(content) = &artwork.layers[0].frames[1].custom_datas[0] else {
+      panic!(
+        "expected CustomData::String, actual {:?}",
+        &artwork.layers[1].fxs[0]
+      );
+    };
     assert_eq!(content.content, "bar");
   }
 
@@ -4383,62 +4768,62 @@ mod tests {
     assert!(
       get_frame_content_by_indices(&artwork, 0, 0)
         ._image
-        .iter()
-        .any(|color| color != &ArgbColor::default())
+        .as_ref()
+        .is_some_and(|image| image.iter().any(|color| color != &ArgbColor::default()))
     );
     assert!(
       get_frame_content_by_indices(&artwork, 0, 1)
         ._image
-        .iter()
-        .all(|color| color == &ArgbColor::default())
+        .as_ref()
+        .is_some_and(|image| image.iter().all(|color| color == &ArgbColor::default()))
     );
     assert!(
       get_frame_content_by_indices(&artwork, 0, 3)
         ._image
-        .iter()
-        .all(|color| color == &ArgbColor::default())
+        .as_ref()
+        .is_some_and(|image| image.iter().all(|color| color == &ArgbColor::default()))
     );
     assert!(
       get_frame_content_by_indices(&artwork, 1, 0)
         ._image
-        .iter()
-        .all(|color| color == &ArgbColor::default())
+        .as_ref()
+        .is_some_and(|image| image.iter().all(|color| color == &ArgbColor::default()))
     );
     assert!(
       get_frame_content_by_indices(&artwork, 1, 1)
         ._image
-        .iter()
-        .any(|color| color != &ArgbColor::default())
+        .as_ref()
+        .is_some_and(|image| image.iter().any(|color| color != &ArgbColor::default()))
     );
     assert!(
       get_frame_content_by_indices(&artwork, 1, 3)
         ._image
-        .iter()
-        .all(|color| color == &ArgbColor::default())
+        .as_ref()
+        .is_some_and(|image| image.iter().all(|color| color == &ArgbColor::default()))
     );
     assert!(
       get_frame_content_by_indices(&artwork, 2, 0)
         ._image
-        .iter()
-        .all(|color| color == &ArgbColor::default())
+        .as_ref()
+        .is_some_and(|image| image.iter().all(|color| color == &ArgbColor::default()))
     );
     assert!(
       get_frame_content_by_indices(&artwork, 2, 1)
         ._image
-        .iter()
-        .any(|color| color != &ArgbColor::default())
+        .as_ref()
+        .is_some_and(|image| image.iter().any(|color| color != &ArgbColor::default()))
     );
     assert!(
       get_frame_content_by_indices(&artwork, 2, 2)
         ._image
-        .iter()
-        .all(|color| color == &ArgbColor::default())
+        .as_ref()
+        .is_some_and(|image| image.iter().all(|color| color == &ArgbColor::default()))
     );
     assert!(
       get_frame_content_by_indices(&artwork, 2, 3)
         ._image
-        .iter()
-        .all(|color| color == &ArgbColor::default())
+        .as_ref()
+        .is_some_and(|image| image.iter().all(|color| color == &ArgbColor::default()))
     );
 
     // check for unspecified data in binary-spec.
@@ -4672,7 +5057,7 @@ mod tests {
     // Tileset 1
     assert_eq!(artwork.tilesets[0].name, "Tileset 1");
     assert_eq!(artwork.tilesets[0].tile_size, Size::new(16, 16));
-    assert_eq!(artwork.tilesets[0]._tile_images.len(), 3);
+    assert_eq!(artwork.tilesets[0]._tile_images.as_ref().unwrap().len(), 3);
     assert_eq!(artwork.tilesets[0].tiles_per_row, 6);
     assert_eq!(artwork.tilesets[0].grid_color, ArgbColor::new(0, 0, 0, 255));
     assert_eq!(
@@ -4682,7 +5067,7 @@ mod tests {
     // Tileset 2
     assert_eq!(artwork.tilesets[1].name, "Tileset 2");
     assert_eq!(artwork.tilesets[1].tile_size, Size::new(16, 16));
-    assert_eq!(artwork.tilesets[1]._tile_images.len(), 2);
+    assert_eq!(artwork.tilesets[1]._tile_images.as_ref().unwrap().len(), 2);
     assert_eq!(artwork.tilesets[1].tiles_per_row, 6);
     assert_eq!(
       artwork.tilesets[1].grid_color,
@@ -4698,7 +5083,7 @@ mod tests {
     // Tileset 3
     assert_eq!(artwork.tilesets[2].name, "Tileset 3");
     assert_eq!(artwork.tilesets[2].tile_size, Size::new(16, 16));
-    assert_eq!(artwork.tilesets[2]._tile_images.len(), 0);
+    assert_eq!(artwork.tilesets[2]._tile_images.as_ref().unwrap().len(), 0);
     assert_eq!(artwork.tilesets[2].tiles_per_row, 6);
     assert_eq!(artwork.tilesets[2].grid_color, ArgbColor::new(0, 0, 0, 255));
     assert_eq!(

@@ -234,30 +234,29 @@ pub enum BlendMode {
   Saturation,
   Color,
   Luminosity,
+  Unknown(u16),
 }
 
-impl TryFrom<u16> for BlendMode {
-  type Error = ParseError<&'static [u8]>;
-
-  fn try_from(v: u16) -> Result<Self, Self::Error> {
+impl From<u16> for BlendMode {
+  fn from(v: u16) -> Self {
     match v {
-      0 => Ok(Self::Normal),
-      1 => Ok(Self::Multiply),
-      2 => Ok(Self::Screen),
-      3 => Ok(Self::Overlay),
-      4 => Ok(Self::Darken),
-      5 => Ok(Self::Lighten),
-      6 => Ok(Self::ColorDodge),
-      7 => Ok(Self::ColorBurn),
-      8 => Ok(Self::HardLight),
-      9 => Ok(Self::SoftLight),
-      10 => Ok(Self::Difference),
-      11 => Ok(Self::Exclusion),
-      12 => Ok(Self::Hue),
-      13 => Ok(Self::Saturation),
-      14 => Ok(Self::Color),
-      15 => Ok(Self::Luminosity),
-      _ => Err(ParseError::InvalidBlendMode),
+      0 => Self::Normal,
+      1 => Self::Multiply,
+      2 => Self::Screen,
+      3 => Self::Overlay,
+      4 => Self::Darken,
+      5 => Self::Lighten,
+      6 => Self::ColorDodge,
+      7 => Self::ColorBurn,
+      8 => Self::HardLight,
+      9 => Self::SoftLight,
+      10 => Self::Difference,
+      11 => Self::Exclusion,
+      12 => Self::Hue,
+      13 => Self::Saturation,
+      14 => Self::Color,
+      15 => Self::Luminosity,
+      _ => Self::Unknown(v),
     }
   }
 }
@@ -281,6 +280,7 @@ impl From<BlendMode> for u16 {
       BlendMode::Saturation => 13,
       BlendMode::Color => 14,
       BlendMode::Luminosity => 15,
+      BlendMode::Unknown(v) => v,
     }
   }
 }
@@ -314,6 +314,7 @@ impl From<BlendMode> for msgw3c::blend::BlendMode {
       BlendMode::Saturation => msgw3c::blend::BlendMode::Saturation,
       BlendMode::Color => msgw3c::blend::BlendMode::Color,
       BlendMode::Luminosity => msgw3c::blend::BlendMode::Luminosity,
+      BlendMode::Unknown(_) => msgw3c::blend::BlendMode::Normal,
     }
   }
 }
@@ -322,15 +323,14 @@ impl From<BlendMode> for msgw3c::blend::BlendMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CustomDataType {
   String,
+  Unknown(u8),
 }
 
-impl TryFrom<u8> for CustomDataType {
-  type Error = ParseError<&'static [u8]>;
-
-  fn try_from(v: u8) -> Result<Self, Self::Error> {
+impl From<u8> for CustomDataType {
+  fn from(v: u8) -> Self {
     match v {
-      0 => Ok(Self::String),
-      _ => Err(ParseError::InvalidCustomDataType),
+      0 => Self::String,
+      _ => Self::Unknown(v),
     }
   }
 }
@@ -339,6 +339,7 @@ impl From<CustomDataType> for u8 {
   fn from(value: CustomDataType) -> Self {
     match value {
       CustomDataType::String => 0,
+      CustomDataType::Unknown(v) => v,
     }
   }
 }
@@ -360,18 +361,17 @@ pub enum FxType {
   Outline,
   AntiAliasing,
   PatternOverlay,
+  Unknown(u8),
 }
 
-impl TryFrom<u8> for FxType {
-  type Error = ParseError<&'static [u8]>;
-
-  fn try_from(v: u8) -> Result<Self, Self::Error> {
+impl From<u8> for FxType {
+  fn from(v: u8) -> Self {
     match v {
-      0 => Ok(Self::ColorOverlay),
-      1 => Ok(Self::Outline),
-      2 => Ok(Self::AntiAliasing),
-      3 => Ok(Self::PatternOverlay),
-      _ => Err(ParseError::InvalidFxType),
+      0 => Self::ColorOverlay,
+      1 => Self::Outline,
+      2 => Self::AntiAliasing,
+      3 => Self::PatternOverlay,
+      _ => Self::Unknown(v),
     }
   }
 }
@@ -383,6 +383,7 @@ impl From<FxType> for u8 {
       FxType::Outline => 1,
       FxType::AntiAliasing => 2,
       FxType::PatternOverlay => 3,
+      FxType::Unknown(v) => v,
     }
   }
 }
@@ -404,18 +405,17 @@ pub enum EntryType {
   Group,
   ReferenceLayer,
   TilemapLayer,
+  Unknown(u8),
 }
 
-impl TryFrom<u8> for EntryType {
-  type Error = ParseError<&'static [u8]>;
-
-  fn try_from(v: u8) -> Result<Self, Self::Error> {
+impl From<u8> for EntryType {
+  fn from(v: u8) -> Self {
     match v {
-      0 => Ok(Self::RegularLayer),
-      1 => Ok(Self::Group),
-      2 => Ok(Self::ReferenceLayer),
-      3 => Ok(Self::TilemapLayer),
-      _ => Err(ParseError::InvalidEntryType),
+      0 => Self::RegularLayer,
+      1 => Self::Group,
+      2 => Self::ReferenceLayer,
+      3 => Self::TilemapLayer,
+      _ => Self::Unknown(v),
     }
   }
 }
@@ -427,6 +427,7 @@ impl From<EntryType> for u8 {
       EntryType::Group => 1,
       EntryType::ReferenceLayer => 2,
       EntryType::TilemapLayer => 3,
+      EntryType::Unknown(v) => v,
     }
   }
 }
@@ -447,17 +448,16 @@ pub enum GuideLineType {
   Grid,
   Isometric,
   Perspective,
+  Unknown(u8),
 }
 
-impl TryFrom<u8> for GuideLineType {
-  type Error = ParseError<&'static [u8]>;
-
-  fn try_from(v: u8) -> Result<Self, Self::Error> {
+impl From<u8> for GuideLineType {
+  fn from(v: u8) -> Self {
     match v {
-      0 => Ok(Self::Grid),
-      1 => Ok(Self::Isometric),
-      2 => Ok(Self::Perspective),
-      _ => Err(ParseError::InvalidGuideLineType),
+      0 => Self::Grid,
+      1 => Self::Isometric,
+      2 => Self::Perspective,
+      _ => Self::Unknown(v),
     }
   }
 }
@@ -468,6 +468,7 @@ impl From<GuideLineType> for u8 {
       GuideLineType::Grid => 0,
       GuideLineType::Isometric => 1,
       GuideLineType::Perspective => 2,
+      GuideLineType::Unknown(v) => v,
     }
   }
 }
@@ -489,18 +490,17 @@ pub enum ProcessorType {
   Vignette,
   Bloom,
   RoundPixel,
+  Unknown(u8),
 }
 
-impl TryFrom<u8> for ProcessorType {
-  type Error = ParseError<&'static [u8]>;
-
-  fn try_from(v: u8) -> Result<Self, Self::Error> {
+impl From<u8> for ProcessorType {
+  fn from(v: u8) -> Self {
     match v {
-      0 => Ok(Self::Crt),
-      1 => Ok(Self::Vignette),
-      2 => Ok(Self::Bloom),
-      3 => Ok(Self::RoundPixel),
-      _ => Err(ParseError::InvalidProcessorType),
+      0 => Self::Crt,
+      1 => Self::Vignette,
+      2 => Self::Bloom,
+      3 => Self::RoundPixel,
+      _ => Self::Unknown(v),
     }
   }
 }
@@ -512,6 +512,7 @@ impl From<ProcessorType> for u8 {
       ProcessorType::Vignette => 1,
       ProcessorType::Bloom => 2,
       ProcessorType::RoundPixel => 3,
+      ProcessorType::Unknown(v) => v,
     }
   }
 }
@@ -530,15 +531,14 @@ impl Marshal for ProcessorType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModifierType {
   AnimationSpeedMultiplier,
+  Unknown(u8),
 }
 
-impl TryFrom<u8> for ModifierType {
-  type Error = ParseError<&'static [u8]>;
-
-  fn try_from(v: u8) -> Result<Self, Self::Error> {
+impl From<u8> for ModifierType {
+  fn from(v: u8) -> Self {
     match v {
-      0 => Ok(Self::AnimationSpeedMultiplier),
-      _ => Err(ParseError::InvalidModifierType),
+      0 => Self::AnimationSpeedMultiplier,
+      _ => Self::Unknown(v),
     }
   }
 }
@@ -547,6 +547,7 @@ impl From<ModifierType> for u8 {
   fn from(value: ModifierType) -> Self {
     match value {
       ModifierType::AnimationSpeedMultiplier => 0,
+      ModifierType::Unknown(v) => v,
     }
   }
 }
@@ -566,16 +567,15 @@ impl Marshal for ModifierType {
 pub enum PaletteOrganizationType {
   Packed,
   Anywhere,
+  Unknown(u8),
 }
 
-impl TryFrom<u8> for PaletteOrganizationType {
-  type Error = ParseError<&'static [u8]>;
-
-  fn try_from(v: u8) -> Result<Self, Self::Error> {
+impl From<u8> for PaletteOrganizationType {
+  fn from(v: u8) -> Self {
     match v {
-      0 => Ok(Self::Packed),
-      1 => Ok(Self::Anywhere),
-      _ => Err(ParseError::InvalidPaletteOrganizationType),
+      0 => Self::Packed,
+      1 => Self::Anywhere,
+      v => Self::Unknown(v),
     }
   }
 }
@@ -585,6 +585,7 @@ impl From<PaletteOrganizationType> for u8 {
     match value {
       PaletteOrganizationType::Packed => 0,
       PaletteOrganizationType::Anywhere => 1,
+      PaletteOrganizationType::Unknown(v) => v,
     }
   }
 }
@@ -623,16 +624,15 @@ impl Marshal for FlipAxes {
 pub enum SymmetryType {
   Mirror,
   Rotate,
+  Unknown(u8),
 }
 
-impl TryFrom<u8> for SymmetryType {
-  type Error = ParseError<&'static [u8]>;
-
-  fn try_from(value: u8) -> Result<Self, Self::Error> {
+impl From<u8> for SymmetryType {
+  fn from(value: u8) -> Self {
     match value {
-      0 => Ok(Self::Mirror),
-      1 => Ok(Self::Rotate),
-      _ => Err(ParseError::InvalidSymmetryLine),
+      0 => Self::Mirror,
+      1 => Self::Rotate,
+      _ => Self::Unknown(value),
     }
   }
 }
@@ -642,6 +642,7 @@ impl From<SymmetryType> for u8 {
     match value {
       SymmetryType::Mirror => 0,
       SymmetryType::Rotate => 1,
+      SymmetryType::Unknown(v) => v,
     }
   }
 }
@@ -661,17 +662,16 @@ pub enum AnimationDirection {
   Forward,
   Backward,
   PingPong,
+  Unknown(u8),
 }
 
-impl TryFrom<u8> for AnimationDirection {
-  type Error = ParseError<&'static [u8]>;
-
-  fn try_from(value: u8) -> Result<Self, Self::Error> {
+impl From<u8> for AnimationDirection {
+  fn from(value: u8) -> Self {
     match value {
-      0 => Ok(Self::Forward),
-      1 => Ok(Self::Backward),
-      2 => Ok(Self::PingPong),
-      _ => Err(ParseError::InvalidAnimationDirection),
+      0 => Self::Forward,
+      1 => Self::Backward,
+      2 => Self::PingPong,
+      _ => Self::Unknown(value),
     }
   }
 }
@@ -682,6 +682,7 @@ impl From<AnimationDirection> for u8 {
       AnimationDirection::Forward => 0,
       AnimationDirection::Backward => 1,
       AnimationDirection::PingPong => 2,
+      AnimationDirection::Unknown(v) => v,
     }
   }
 }
@@ -699,16 +700,15 @@ impl Marshal for AnimationDirection {
 pub enum ColorDepth {
   Rgb,
   Indexed,
+  Unknown(u8),
 }
 
-impl TryFrom<u8> for ColorDepth {
-  type Error = ParseError<&'static [u8]>;
-
-  fn try_from(value: u8) -> Result<Self, Self::Error> {
+impl From<u8> for ColorDepth {
+  fn from(value: u8) -> Self {
     match value {
-      0 => Ok(Self::Rgb),
-      1 => Ok(Self::Indexed),
-      _ => Err(ParseError::InvalidColorDepth),
+      0 => Self::Rgb,
+      1 => Self::Indexed,
+      _ => Self::Unknown(value),
     }
   }
 }
@@ -718,6 +718,7 @@ impl From<ColorDepth> for u8 {
     match value {
       ColorDepth::Rgb => 0,
       ColorDepth::Indexed => 1,
+      ColorDepth::Unknown(v) => v,
     }
   }
 }
