@@ -10,7 +10,7 @@ A Crate for reading/writing [Pixquare](https://www.pixquare.art/) files.
 ```toml
 # Cargo.toml
 [dependencies]
-pixquare = "0.1.0"
+pixquare-io = "0.1.0"
 ```
 
 ## Reading from a file
@@ -51,5 +51,11 @@ Also, this method currently supports 1x scale output only, so Round Pixel and CR
 
 ```rust,ignore
 let frame_index = 0;
-artwork.get_frame_image(frame_index, LayerVisibility::Visible)?;
+let image_buf = artwork.get_frame_image(frame_index, LayerVisibility::Visible)?;
 ```
+
+## Compatible Pixquare versions
+
+| Pixquare version | `pixquare-io` version |
+| :-- | :-- |
+| ~2.72.0 | 0.1.0 |
