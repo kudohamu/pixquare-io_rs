@@ -9,13 +9,13 @@ use nom::{
   combinator::map,
   error::ErrorKind,
   multi::many0,
-  number::complete::{le_f32, le_f64, le_i16, le_u8, le_u16, le_u32, le_u64},
+  number::complete::{le_f32, le_f64, le_i16, le_i32, le_u8, le_u16, le_u32, le_u64},
 };
 
 use crate::{
   combinator::{
-    argb_color, array_type, blend_mode, bool, compressed_color_bytes, corners, dumb_string,
-    float16, option_set_u8, rect, size, string, type_n,
+    argb_color, array_type, blend_mode, bool, compressed_color_bytes, coordinate, corners,
+    dumb_string, float16, option_set_u8, rect, size, string, type_n,
   },
   composite_type::{
     AnimationDirection, ArgbColor, Axis, BlendMode, ColorDepth, ColorSpace, Coordinate, Corners,
@@ -1823,9 +1823,44 @@ pub enum Magic {
   Unknown(MagicUnknownContent),
 }
 
+impl Magic {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
+    let (input, property_type) = le_u16(input)?;
+
+    match property_type {
+      0 => {
+        let (input, content) = MagicParallaxContent::parse(input)?;
+
+        Ok((input, Self::Parallax(content)))
+      }
+      1 => {
+        let (input, content) = MagicSkewingContent::parse(input)?;
+
+        Ok((input, Self::Skewing(content)))
+      }
+      2 => {
+        let (input, content) = MagicTweenContent::parse(input)?;
+
+        Ok((input, Self::Tween(content)))
+      }
+      3 => {
+        let (input, content) = MagicWaveContent::parse(input)?;
+
+        Ok((input, Self::Wave(content)))
+      }
+      v => {
+        let (input, content) = MagicUnknownContent::parser(0 as usize, v).parse(input)?;
+
+        Ok((input, Self::Unknown(content)))
+      }
+    }
+  }
+}
+
 /// Content data of parallax for magic.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct MagicParallaxContent {
+  pub id: String,
   pub enabled: bool,
   pub x: i32,
   pub y: i32,
@@ -1833,9 +1868,28 @@ pub struct MagicParallaxContent {
   pub _unused: u8,
 }
 
+impl MagicParallaxContent {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
+    let (rest, (id, enabled, x, y, _unused)) =
+      (string, bool, le_i32, le_i32, le_u8).parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        id,
+        enabled,
+        x,
+        y,
+        _unused,
+      },
+    ))
+  }
+}
+
 /// Content data of skewing for magic.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct MagicSkewingContent {
+  pub id: String,
   pub enabled: bool,
   pub axis: Axis,
   pub step: i32,
@@ -1843,9 +1897,36 @@ pub struct MagicSkewingContent {
   pub count: u32,
 }
 
+impl MagicSkewingContent {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
+    let (rest, (id, enabled, axis, step, size, count)) = (
+      string,
+      bool,
+      map(le_u8, |v| v.into()),
+      le_i32,
+      le_u32,
+      le_u32,
+    )
+      .parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        id,
+        enabled,
+        axis,
+        step,
+        size,
+        count,
+      },
+    ))
+  }
+}
+
 /// Content data of tween for magic.
 #[derive(Debug, Clone)]
 pub struct MagicTweenContent {
+  pub id: String,
   pub enabled: bool,
   pub curve: Curve,
   pub properties: Vec<MagicProperty>,
@@ -1854,9 +1935,38 @@ pub struct MagicTweenContent {
   pub loop_count: u32,
 }
 
+impl MagicTweenContent {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
+    let (rest, (id, enabled, curve, properties, frame_count, auto_reverse, loop_count)) = (
+      string,
+      bool,
+      map(le_u16, |v| v.into()),
+      array_type(MagicProperty::parse),
+      le_u32,
+      bool,
+      le_u32,
+    )
+      .parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        id,
+        enabled,
+        curve,
+        properties,
+        frame_count,
+        auto_reverse,
+        loop_count,
+      },
+    ))
+  }
+}
+
 /// Content data of wave for magic.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct MagicWaveContent {
+  pub id: String,
   pub enabled: bool,
   pub size: u32,
   pub step: u32,
@@ -1864,11 +1974,49 @@ pub struct MagicWaveContent {
   pub frame_count: u32,
 }
 
+impl MagicWaveContent {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
+    let (rest, (id, enabled, size, step, angle, frame_count)) =
+      (string, bool, le_u32, le_u32, le_f32, le_u32).parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        id,
+        enabled,
+        size,
+        step,
+        angle,
+        frame_count,
+      },
+    ))
+  }
+}
+
 /// Content data of unknown magic.
 #[derive(Debug, Clone)]
 pub struct MagicUnknownContent {
   data_type_value: u16,
   remaining_data: Vec<u8>,
+}
+
+impl<'a> MagicUnknownContent {
+  fn parser(
+    data_size: usize,
+    data_type_value: u16,
+  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
+    move |input: &'a [u8]| {
+      let (rest, remaining_data) = take(data_size).parse(input)?;
+
+      Ok((
+        rest,
+        Self {
+          data_type_value,
+          remaining_data: remaining_data.into(),
+        },
+      ))
+    }
+  }
 }
 
 /// Property data of Magic.
@@ -1881,6 +2029,40 @@ pub enum MagicProperty {
   Scale(MagicPropertyScaleContent),
   Rotation(MagicPropertyRotationContent),
   Unknown(MagicPropertyUnknownContent),
+}
+
+impl MagicProperty {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
+    let (input, property_type) = le_u16(input)?;
+
+    match property_type {
+      0 => {
+        let (input, content) = MagicPropertyColorAdjustmentContent::parse(input)?;
+
+        Ok((input, Self::ColorAdjuestment(content)))
+      }
+      1 => {
+        let (input, content) = MagicPropertyDisplacementContent::parse(input)?;
+
+        Ok((input, Self::Displacement(content)))
+      }
+      2 => {
+        let (input, content) = MagicPropertyScaleContent::parse(input)?;
+
+        Ok((input, Self::Scale(content)))
+      }
+      3 => {
+        let (input, content) = MagicPropertyRotationContent::parse(input)?;
+
+        Ok((input, Self::Rotation(content)))
+      }
+      v => {
+        let (input, content) = MagicPropertyUnknownContent::parser(0 as usize, v).parse(input)?;
+
+        Ok((input, Self::Unknown(content)))
+      }
+    }
+  }
 }
 
 /// Content data of color adjustment for magic property.
@@ -1897,10 +2079,44 @@ pub struct MagicPropertyColorAdjustmentContent {
   pub color_space: ColorSpace,
 }
 
+impl MagicPropertyColorAdjustmentContent {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
+    let (rest, (first_value, second_value, third_value, alpha_shift, tone, color_space)) = (
+      le_f32,
+      le_f32,
+      le_f32,
+      le_f32,
+      map(le_u8, |v| v.into()),
+      map(le_u8, |v| v.into()),
+    )
+      .parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        first_value,
+        second_value,
+        third_value,
+        alpha_shift,
+        tone,
+        color_space,
+      },
+    ))
+  }
+}
+
 /// Content data of displacement for magic property.
 #[derive(Debug, Clone, Copy)]
 pub struct MagicPropertyDisplacementContent {
   pub displacement: Coordinate,
+}
+
+impl MagicPropertyDisplacementContent {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
+    let (rest, displacement) = coordinate(input)?;
+
+    Ok((rest, Self { displacement }))
+  }
 }
 
 /// Content data of scale for magic property.
@@ -1912,10 +2128,34 @@ pub struct MagicPropertyScaleContent {
   pub right: i32,
 }
 
+impl MagicPropertyScaleContent {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
+    let (rest, (top, bottom, left, right)) = (le_i32, le_i32, le_i32, le_i32).parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        top,
+        bottom,
+        left,
+        right,
+      },
+    ))
+  }
+}
+
 /// Content data of rotation for magic property.
 #[derive(Debug, Clone, Copy)]
 pub struct MagicPropertyRotationContent {
   pub angle: f32,
+}
+
+impl MagicPropertyRotationContent {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
+    let (rest, angle) = le_f32.parse(input)?;
+
+    Ok((rest, Self { angle }))
+  }
 }
 
 /// Content data of unknown magic property.
@@ -1923,6 +2163,25 @@ pub struct MagicPropertyRotationContent {
 pub struct MagicPropertyUnknownContent {
   data_type_value: u16,
   remaining_data: Vec<u8>,
+}
+
+impl<'a> MagicPropertyUnknownContent {
+  fn parser(
+    data_size: usize,
+    data_type_value: u16,
+  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
+    move |input: &'a [u8]| {
+      let (rest, remaining_data) = take(data_size).parse(input)?;
+
+      Ok((
+        rest,
+        Self {
+          data_type_value,
+          remaining_data: remaining_data.into(),
+        },
+      ))
+    }
+  }
 }
 
 /// Header data of Entry.
@@ -2646,6 +2905,16 @@ struct MagicLayerHeader {
   data_size: u32,
 }
 
+impl MagicLayerHeader {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
+    let (rest, input) = take(32usize).parse(input)?;
+
+    let (_input, data_size) = le_u32.parse(input)?;
+
+    Ok((rest, Self { data_size }))
+  }
+}
+
 /// A magic layer with all data.
 ///
 /// <https://docs.pixquare.art/pixquare-file/binary-specs#magic-layer>
@@ -2682,6 +2951,70 @@ pub struct MagicLayer {
   /// Default: []
   pub magics: Vec<Magic>,
   remaining_data: Vec<u8>,
+}
+
+impl MagicLayer {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
+    let (input, header) = MagicLayerHeader::parse(input)?;
+    let (rest, input) = take(header.data_size as usize).parse(input)?;
+
+    let (
+      remaining_data,
+      (
+        id,
+        name,
+        frames,
+        opacity,
+        visible,
+        locked,
+        selected,
+        alpha_locked,
+        blend_mode,
+        cropping_masks,
+        clipping_masks,
+        color,
+        fxs,
+        magics,
+      ),
+    ) = (
+      string,
+      string,
+      array_type(Frame::parse),
+      float16,
+      bool,
+      bool,
+      bool,
+      bool,
+      blend_mode,
+      array_type(Entry::parse),
+      array_type(Entry::parse),
+      argb_color,
+      array_type(Fx::parse),
+      array_type(Magic::parse),
+    )
+      .parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        id: id.to_string(),
+        name: name.to_string(),
+        frames,
+        opacity,
+        visible,
+        locked,
+        selected,
+        alpha_locked,
+        blend_mode,
+        cropping_masks,
+        clipping_masks,
+        color,
+        fxs,
+        magics,
+        remaining_data: remaining_data.into(),
+      },
+    ))
+  }
 }
 
 /// Header data of Stats.
@@ -4204,6 +4537,7 @@ impl<'a> Artwork {
         tiled_corners,
         modifiers,
         pixel_size,
+        magic_layers,
       ),
     ) = (
       dumb_string(header.id_len as usize),
@@ -4233,6 +4567,7 @@ impl<'a> Artwork {
       corners,
       array_type(Modifier::parse),
       size,
+      array_type(MagicLayer::parse),
     )
       .parse(input)?;
 
@@ -4264,7 +4599,7 @@ impl<'a> Artwork {
         tiled_corners,
         modifiers,
         pixel_size,
-        magic_layers: vec![],
+        magic_layers,
         remaining_data: remaining_data.into(),
       },
     ))
@@ -4335,6 +4670,8 @@ impl ModelMarshal for Artwork {
 
 #[cfg(test)]
 mod tests {
+  use std::f32::consts::PI;
+
   use crate::composite_type::Coordinate;
 
   use super::*;
@@ -5672,6 +6009,276 @@ mod tests {
     let artwork = file.unwrap();
     assert_eq!(artwork.canvas_size, Size::new(64, 64));
     assert_eq!(artwork.pixel_size, Size::new(2, 2));
+  }
+
+  #[test]
+  fn test_parse_magic_layer_parallax_data() {
+    let path = "assets/fixtures/magic_layer-parallax.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.entries.len(), 4);
+    assert_eq!(artwork.magic_layers.len(), 3);
+    assert_eq!(artwork.entries[1].id, artwork.magic_layers[0].id);
+    assert_eq!(artwork.entries[2].id, artwork.magic_layers[1].id);
+    assert_eq!(artwork.entries[3].id, artwork.magic_layers[2].id);
+
+    // Magic Layer 1
+    assert_eq!(artwork.magic_layers[0].name, "Magic Layer 1");
+    assert_eq!(artwork.magic_layers[0].frames.len(), 8);
+    assert_eq!(artwork.magic_layers[0].opacity, f16::from_f32(1.0));
+    assert!(artwork.magic_layers[0].visible);
+    assert!(!artwork.magic_layers[0].locked);
+    assert!(artwork.magic_layers[0].selected);
+    assert!(!artwork.magic_layers[0].alpha_locked);
+    assert_eq!(artwork.magic_layers[0].blend_mode, BlendMode::Normal);
+    assert!(artwork.magic_layers[0].cropping_masks.is_empty());
+    assert!(artwork.magic_layers[0].clipping_masks.is_empty());
+    assert_eq!(
+      artwork.magic_layers[0].color,
+      ArgbColor::new(135, 102, 199, 255)
+    );
+    assert!(artwork.magic_layers[0].fxs.is_empty());
+    let Magic::Parallax(parallax1) = &artwork.magic_layers[0].magics[0] else {
+      panic!("expected Magic::Parallax");
+    };
+    assert!(parallax1.enabled);
+    assert_eq!(parallax1.x, -8);
+    assert_eq!(parallax1.y, 0);
+    assert_eq!(parallax1._unused, 0);
+    // Magic Layer 2
+    assert_eq!(artwork.magic_layers[1].name, "Magic Layer 2");
+    assert_eq!(artwork.magic_layers[1].frames.len(), 8);
+    assert_eq!(artwork.magic_layers[1].opacity, f16::from_f32(1.0));
+    assert!(artwork.magic_layers[1].visible);
+    assert!(artwork.magic_layers[1].locked);
+    assert!(!artwork.magic_layers[1].selected);
+    assert!(!artwork.magic_layers[1].alpha_locked);
+    assert_eq!(artwork.magic_layers[1].blend_mode, BlendMode::Normal);
+    assert!(artwork.magic_layers[1].cropping_masks.is_empty());
+    assert!(artwork.magic_layers[1].clipping_masks.is_empty());
+    assert_eq!(artwork.magic_layers[1].color, ArgbColor::default());
+    assert!(artwork.magic_layers[1].fxs.is_empty());
+    let Magic::Parallax(parallax2) = &artwork.magic_layers[1].magics[0] else {
+      panic!("expected Magic::Parallax");
+    };
+    assert!(parallax2.enabled);
+    assert_eq!(parallax2.x, 0);
+    assert_eq!(parallax2.y, 8);
+    assert_eq!(parallax2._unused, 0);
+    // Magic Layer 3
+    assert_eq!(artwork.magic_layers[2].name, "Magic Layer 3");
+    assert_eq!(artwork.magic_layers[2].frames.len(), 8);
+    assert_eq!(artwork.magic_layers[2].opacity, f16::from_f32(1.0));
+    assert!(!artwork.magic_layers[2].visible);
+    assert!(!artwork.magic_layers[2].locked);
+    assert!(!artwork.magic_layers[2].selected);
+    assert!(!artwork.magic_layers[2].alpha_locked);
+    assert_eq!(artwork.magic_layers[2].blend_mode, BlendMode::Normal);
+    assert!(artwork.magic_layers[2].cropping_masks.is_empty());
+    assert!(artwork.magic_layers[2].clipping_masks.is_empty());
+    assert_eq!(artwork.magic_layers[2].color, ArgbColor::default());
+    assert!(artwork.magic_layers[2].fxs.is_empty());
+    let Magic::Parallax(parallax3) = &artwork.magic_layers[2].magics[0] else {
+      panic!("expected Magic::Parallax");
+    };
+    assert!(parallax3.enabled);
+    assert_eq!(parallax3.x, 4);
+    assert_eq!(parallax3.y, 0);
+    assert_eq!(parallax3._unused, 0);
+  }
+
+  #[test]
+  fn test_parse_magic_layer_skewing_data() {
+    let path = "assets/fixtures/magic_layer-skewing.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.entries.len(), 3);
+    assert_eq!(artwork.magic_layers.len(), 2);
+    assert_eq!(artwork.entries[1].id, artwork.magic_layers[0].id);
+    assert_eq!(artwork.entries[2].id, artwork.magic_layers[1].id);
+
+    // Magic Layer 1
+    assert_eq!(artwork.magic_layers[0].name, "Magic Layer 1");
+    assert_eq!(artwork.magic_layers[0].frames.len(), 6);
+    assert_eq!(artwork.magic_layers[0].opacity, f16::from_f32(1.0));
+    assert!(artwork.magic_layers[0].visible);
+    assert!(!artwork.magic_layers[0].locked);
+    assert!(!artwork.magic_layers[0].selected);
+    assert!(!artwork.magic_layers[0].alpha_locked);
+    assert_eq!(artwork.magic_layers[0].blend_mode, BlendMode::Normal);
+    assert!(artwork.magic_layers[0].cropping_masks.is_empty());
+    assert!(artwork.magic_layers[0].clipping_masks.is_empty());
+    let Magic::Skewing(skewing1) = &artwork.magic_layers[0].magics[0] else {
+      panic!("expected Magic::Skewing");
+    };
+    assert!(skewing1.enabled);
+    assert_eq!(skewing1.axis, Axis::Horizontal);
+    assert_eq!(skewing1.step, 1);
+    assert_eq!(skewing1.size, 6);
+    assert_eq!(skewing1.count, 2);
+
+    // Magic Layer 2
+    assert_eq!(artwork.magic_layers[1].name, "Magic Layer 2");
+    assert_eq!(artwork.magic_layers[1].frames.len(), 6);
+    assert_eq!(artwork.magic_layers[1].opacity, f16::from_f32(1.0));
+    assert!(artwork.magic_layers[1].visible);
+    assert!(!artwork.magic_layers[1].locked);
+    assert!(artwork.magic_layers[1].selected);
+    assert!(!artwork.magic_layers[1].alpha_locked);
+    assert_eq!(artwork.magic_layers[1].blend_mode, BlendMode::Normal);
+    assert!(artwork.magic_layers[1].cropping_masks.is_empty());
+    assert!(artwork.magic_layers[1].clipping_masks.is_empty());
+    let Magic::Skewing(skewing2) = &artwork.magic_layers[1].magics[0] else {
+      panic!("expected Magic::Skewing");
+    };
+    assert!(skewing1.enabled);
+    assert_eq!(skewing2.axis, Axis::Vertical);
+    assert_eq!(skewing2.step, 2);
+    assert_eq!(skewing2.size, 3);
+    assert_eq!(skewing2.count, 4);
+  }
+
+  #[test]
+  fn test_parse_magic_layer_tween_data() {
+    let path = "assets/fixtures/magic_layer-tween.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.entries.len(), 3);
+    assert_eq!(artwork.magic_layers.len(), 2);
+    assert_eq!(artwork.entries[1].id, artwork.magic_layers[0].id);
+    assert_eq!(artwork.entries[2].id, artwork.magic_layers[1].id);
+
+    // Magic Layer 1
+    assert_eq!(artwork.magic_layers[0].name, "Magic Layer 1");
+    assert_eq!(artwork.magic_layers[0].frames.len(), 12);
+    assert_eq!(artwork.magic_layers[0].opacity, f16::from_f32(1.0));
+    assert!(artwork.magic_layers[0].visible);
+    assert!(!artwork.magic_layers[0].locked);
+    assert!(!artwork.magic_layers[0].selected);
+    assert!(!artwork.magic_layers[0].alpha_locked);
+    assert_eq!(artwork.magic_layers[0].blend_mode, BlendMode::Normal);
+    assert!(artwork.magic_layers[0].cropping_masks.is_empty());
+    assert!(artwork.magic_layers[0].clipping_masks.is_empty());
+    let Magic::Tween(tween1) = &artwork.magic_layers[0].magics[0] else {
+      panic!("expected Magic::Tween");
+    };
+    assert!(tween1.enabled);
+    assert_eq!(tween1.curve, Curve::EaseIn);
+    assert_eq!(tween1.properties.len(), 2);
+    let MagicProperty::ColorAdjuestment(color_adjuestment) = &tween1.properties[0] else {
+      panic!("expected MagicProperty::ColorAdjuestment");
+    };
+    assert_eq!(color_adjuestment.first_value, 0.);
+    assert_eq!(color_adjuestment.second_value, 0.25);
+    assert_eq!(color_adjuestment.third_value, -0.29);
+    assert_eq!(color_adjuestment.alpha_shift, 0.26);
+    let MagicProperty::Scale(scaling) = &tween1.properties[1] else {
+      panic!("expected MagicProperty::Scale");
+    };
+    assert_eq!(scaling.top, 2);
+    assert_eq!(scaling.bottom, 3);
+    assert_eq!(scaling.left, -6);
+    assert_eq!(scaling.right, 5);
+    assert_eq!(tween1.frame_count, 7);
+    assert_eq!(tween1.auto_reverse, true);
+    assert_eq!(tween1.loop_count, 0);
+
+    // Magic Layer 2
+    assert_eq!(artwork.magic_layers[1].name, "Magic Layer 2");
+    assert_eq!(artwork.magic_layers[1].frames.len(), 12);
+    assert_eq!(artwork.magic_layers[1].opacity, f16::from_f32(1.0));
+    assert!(artwork.magic_layers[1].visible);
+    assert!(!artwork.magic_layers[1].locked);
+    assert!(artwork.magic_layers[1].selected);
+    assert!(!artwork.magic_layers[1].alpha_locked);
+    assert_eq!(artwork.magic_layers[1].blend_mode, BlendMode::Normal);
+    assert!(artwork.magic_layers[1].cropping_masks.is_empty());
+    assert!(artwork.magic_layers[1].clipping_masks.is_empty());
+    let Magic::Tween(tween1) = &artwork.magic_layers[1].magics[0] else {
+      panic!("expected Magic::Tween");
+    };
+    assert!(tween1.enabled);
+    assert_eq!(tween1.curve, Curve::Smooth);
+    assert_eq!(tween1.properties.len(), 2);
+    let MagicProperty::Rotation(rotation) = &tween1.properties[0] else {
+      panic!("expected MagicProperty::Rotation");
+    };
+    assert_eq!(rotation.angle, 180. / 180. * PI);
+    let MagicProperty::Displacement(displacement) = &tween1.properties[1] else {
+      panic!("expected MagicProperty::Displacement");
+    };
+    assert_eq!(displacement.displacement.x, 5);
+    assert_eq!(displacement.displacement.y, -4);
+    assert_eq!(tween1.frame_count, 12);
+    assert_eq!(tween1.auto_reverse, false);
+    assert_eq!(tween1.loop_count, 3);
+  }
+
+  #[test]
+  fn test_parse_magic_layer_wave_data() {
+    let path = "assets/fixtures/magic_layer-wave.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.entries.len(), 3);
+    assert_eq!(artwork.magic_layers.len(), 2);
+    assert_eq!(artwork.entries[1].id, artwork.magic_layers[0].id);
+    assert_eq!(artwork.entries[2].id, artwork.magic_layers[1].id);
+
+    // Magic Layer 1
+    assert_eq!(artwork.magic_layers[0].name, "Magic Layer 1");
+    assert_eq!(artwork.magic_layers[0].frames.len(), 10);
+    assert_eq!(artwork.magic_layers[0].opacity, f16::from_f32(1.0));
+    assert!(artwork.magic_layers[0].visible);
+    assert!(!artwork.magic_layers[0].locked);
+    assert!(artwork.magic_layers[0].selected);
+    assert!(!artwork.magic_layers[0].alpha_locked);
+    assert_eq!(artwork.magic_layers[0].blend_mode, BlendMode::Normal);
+    assert!(artwork.magic_layers[0].cropping_masks.is_empty());
+    assert!(artwork.magic_layers[0].clipping_masks.is_empty());
+    let Magic::Wave(wave1) = &artwork.magic_layers[0].magics[0] else {
+      panic!("expected Magic::Wave");
+    };
+    assert!(wave1.enabled);
+    assert_eq!(wave1.size, 16);
+    assert_eq!(wave1.step, 1);
+    assert_eq!(wave1.angle * 180. / PI, 20.);
+    assert_eq!(wave1.frame_count, 3);
+
+    // Magic Layer 2
+    assert_eq!(artwork.magic_layers[1].name, "Magic Layer 2");
+    assert_eq!(artwork.magic_layers[1].frames.len(), 10);
+    assert_eq!(artwork.magic_layers[1].opacity, f16::from_f32(1.0));
+    assert!(artwork.magic_layers[1].visible);
+    assert!(!artwork.magic_layers[1].locked);
+    assert!(!artwork.magic_layers[1].selected);
+    assert!(!artwork.magic_layers[1].alpha_locked);
+    assert_eq!(artwork.magic_layers[1].blend_mode, BlendMode::Normal);
+    assert!(artwork.magic_layers[1].cropping_masks.is_empty());
+    assert!(artwork.magic_layers[1].clipping_masks.is_empty());
+    let Magic::Wave(wave2) = &artwork.magic_layers[1].magics[0] else {
+      panic!("expected Magic::Wave");
+    };
+    assert!(wave2.enabled);
+    assert_eq!(wave2.size, 12);
+    assert_eq!(wave2.step, 4);
+    assert_eq!(wave2.angle * 180. / PI, 30.);
+    assert_eq!(wave2.frame_count, 10);
   }
 
   #[test]
