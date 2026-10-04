@@ -405,6 +405,7 @@ pub enum EntryType {
   Group,
   ReferenceLayer,
   TilemapLayer,
+  MagicLayer,
   Unknown(u8),
 }
 
@@ -415,6 +416,7 @@ impl From<u8> for EntryType {
       1 => Self::Group,
       2 => Self::ReferenceLayer,
       3 => Self::TilemapLayer,
+      4 => Self::MagicLayer,
       _ => Self::Unknown(v),
     }
   }
@@ -427,6 +429,7 @@ impl From<EntryType> for u8 {
       EntryType::Group => 1,
       EntryType::ReferenceLayer => 2,
       EntryType::TilemapLayer => 3,
+      EntryType::MagicLayer => 4,
       EntryType::Unknown(v) => v,
     }
   }
@@ -726,6 +729,174 @@ impl From<ColorDepth> for u8 {
 impl Marshal for ColorDepth {
   fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
     let v: u8 = (*self).into();
+    v.marshal(w)?;
+
+    Ok(())
+  }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tone {
+  Shadow,
+  Midtone,
+  Highlight,
+  All,
+  Unknown(u8),
+}
+
+impl From<u8> for Tone {
+  fn from(value: u8) -> Self {
+    match value {
+      0 => Self::Shadow,
+      1 => Self::Midtone,
+      2 => Self::Highlight,
+      4 => Self::All,
+      _ => Self::Unknown(value),
+    }
+  }
+}
+
+impl From<Tone> for u8 {
+  fn from(value: Tone) -> Self {
+    match value {
+      Tone::Shadow => 0,
+      Tone::Midtone => 1,
+      Tone::Highlight => 2,
+      Tone::All => 4,
+      Tone::Unknown(v) => v,
+    }
+  }
+}
+
+impl Marshal for Tone {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let v: u8 = (*self).into();
+    v.marshal(w)?;
+
+    Ok(())
+  }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorSpace {
+  HSV,
+  HSL,
+  RGB,
+  Unknown(u8),
+}
+
+impl From<u8> for ColorSpace {
+  fn from(value: u8) -> Self {
+    match value {
+      0 => Self::HSV,
+      1 => Self::HSL,
+      2 => Self::RGB,
+      _ => Self::Unknown(value),
+    }
+  }
+}
+
+impl From<ColorSpace> for u8 {
+  fn from(value: ColorSpace) -> Self {
+    match value {
+      ColorSpace::HSV => 0,
+      ColorSpace::HSL => 1,
+      ColorSpace::RGB => 2,
+      ColorSpace::Unknown(v) => v,
+    }
+  }
+}
+
+impl Marshal for ColorSpace {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let v: u8 = (*self).into();
+    v.marshal(w)?;
+
+    Ok(())
+  }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Axis {
+  Vertical,
+  Horizontal,
+  Unknown(u8),
+}
+
+impl From<u8> for Axis {
+  fn from(value: u8) -> Self {
+    match value {
+      0 => Self::Vertical,
+      1 => Self::Horizontal,
+      _ => Self::Unknown(value),
+    }
+  }
+}
+
+impl From<Axis> for u8 {
+  fn from(value: Axis) -> Self {
+    match value {
+      Axis::Vertical => 0,
+      Axis::Horizontal => 1,
+      Axis::Unknown(v) => v,
+    }
+  }
+}
+
+impl Marshal for Axis {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let v: u8 = (*self).into();
+    v.marshal(w)?;
+
+    Ok(())
+  }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Curve {
+  Linear,
+  EaseIn,
+  EaseOut,
+  EaseInOut,
+  Bouncy,
+  Smooth,
+  Snappy,
+  Unknown(u16),
+}
+
+impl From<u16> for Curve {
+  fn from(value: u16) -> Self {
+    match value {
+      0 => Self::Linear,
+      1 => Self::EaseIn,
+      2 => Self::EaseOut,
+      3 => Self::EaseInOut,
+      4 => Self::Bouncy,
+      5 => Self::Smooth,
+      6 => Self::Snappy,
+      _ => Self::Unknown(value),
+    }
+  }
+}
+
+impl From<Curve> for u16 {
+  fn from(value: Curve) -> Self {
+    match value {
+      Curve::Linear => 0,
+      Curve::EaseIn => 1,
+      Curve::EaseOut => 2,
+      Curve::EaseInOut => 3,
+      Curve::Bouncy => 4,
+      Curve::Smooth => 5,
+      Curve::Snappy => 6,
+      Curve::Unknown(v) => v,
+    }
+  }
+}
+
+impl Marshal for Curve {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let v: u16 = (*self).into();
     v.marshal(w)?;
 
     Ok(())

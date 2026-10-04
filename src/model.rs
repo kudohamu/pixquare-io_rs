@@ -18,9 +18,9 @@ use crate::{
     float16, option_set_u8, rect, size, string, type_n,
   },
   composite_type::{
-    AnimationDirection, ArgbColor, BlendMode, ColorDepth, Corners, CustomDataType, EntryType,
-    FlipAxes, FxType, GuideLineType, ModifierType, PaletteOrganizationType, ProcessorType, Rect,
-    Size, SymmetryType,
+    AnimationDirection, ArgbColor, Axis, BlendMode, ColorDepth, ColorSpace, Coordinate, Corners,
+    Curve, CustomDataType, EntryType, FlipAxes, FxType, GuideLineType, ModifierType,
+    PaletteOrganizationType, ProcessorType, Rect, Size, SymmetryType, Tone,
   },
   error::{ArtworkOperationError, MarshalError, PMResult, PPResult, ParseError},
   interpolation::smoothstep,
@@ -1811,6 +1811,120 @@ impl Marshal for Fx {
   }
 }
 
+/// The core model of [`MagicLayer`].
+///
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#magic>
+#[derive(Debug, Clone)]
+pub enum Magic {
+  Parallax(MagicParallaxContent),
+  Skewing(MagicSkewingContent),
+  Tween(MagicTweenContent),
+  Wave(MagicWaveContent),
+  Unknown(MagicUnknownContent),
+}
+
+/// Content data of parallax for magic.
+#[derive(Debug, Clone, Copy)]
+pub struct MagicParallaxContent {
+  pub enabled: bool,
+  pub x: i32,
+  pub y: i32,
+  /// Always 0 for now.
+  pub _unused: u8,
+}
+
+/// Content data of skewing for magic.
+#[derive(Debug, Clone, Copy)]
+pub struct MagicSkewingContent {
+  pub enabled: bool,
+  pub axis: Axis,
+  pub step: i32,
+  pub size: u32,
+  pub count: u32,
+}
+
+/// Content data of tween for magic.
+#[derive(Debug, Clone)]
+pub struct MagicTweenContent {
+  pub enabled: bool,
+  pub curve: Curve,
+  pub properties: Vec<MagicProperty>,
+  pub frame_count: u32,
+  pub auto_reverse: bool,
+  pub loop_count: u32,
+}
+
+/// Content data of wave for magic.
+#[derive(Debug, Clone, Copy)]
+pub struct MagicWaveContent {
+  pub enabled: bool,
+  pub size: u32,
+  pub step: u32,
+  pub angle: f32,
+  pub frame_count: u32,
+}
+
+/// Content data of unknown magic.
+#[derive(Debug, Clone)]
+pub struct MagicUnknownContent {
+  data_type_value: u16,
+  remaining_data: Vec<u8>,
+}
+
+/// Property data of Magic.
+///
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#magic>
+#[derive(Debug, Clone)]
+pub enum MagicProperty {
+  ColorAdjuestment(MagicPropertyColorAdjustmentContent),
+  Displacement(MagicPropertyDisplacementContent),
+  Scale(MagicPropertyScaleContent),
+  Rotation(MagicPropertyRotationContent),
+  Unknown(MagicPropertyUnknownContent),
+}
+
+/// Content data of color adjustment for magic property.
+#[derive(Debug, Clone, Copy)]
+pub struct MagicPropertyColorAdjustmentContent {
+  /// Hue or Red.
+  pub first_value: f32,
+  /// Saturation or Green.
+  pub second_value: f32,
+  /// Value, Lightness, or Blue.
+  pub third_value: f32,
+  pub alpha_shift: f32,
+  pub tone: Tone,
+  pub color_space: ColorSpace,
+}
+
+/// Content data of displacement for magic property.
+#[derive(Debug, Clone, Copy)]
+pub struct MagicPropertyDisplacementContent {
+  pub displacement: Coordinate,
+}
+
+/// Content data of scale for magic property.
+#[derive(Debug, Clone, Copy)]
+pub struct MagicPropertyScaleContent {
+  pub top: i32,
+  pub bottom: i32,
+  pub left: i32,
+  pub right: i32,
+}
+
+/// Content data of rotation for magic property.
+#[derive(Debug, Clone, Copy)]
+pub struct MagicPropertyRotationContent {
+  pub angle: f32,
+}
+
+/// Content data of unknown magic property.
+#[derive(Debug, Clone)]
+pub struct MagicPropertyUnknownContent {
+  data_type_value: u16,
+  remaining_data: Vec<u8>,
+}
+
 /// Header data of Entry.
 /// 16 bytes
 /// <https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-4>
@@ -2523,6 +2637,51 @@ impl ModelMarshal for TilemapLayer {
       data_size: data_size as u32,
     })
   }
+}
+
+/// Header data of MagicLayer.
+/// 32 bytes
+#[derive(Debug)]
+struct MagicLayerHeader {
+  data_size: u32,
+}
+
+/// A magic layer with all data.
+///
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#magic-layer>
+#[derive(Debug, Clone)]
+pub struct MagicLayer {
+  /// ID.
+  /// The length is specified in the header.
+  /// This is the same ID as the one in `Entry`.
+  pub id: String,
+  /// Name.
+  /// The length is specified in the header.
+  pub name: String,
+  /// Frames of this magic layer.
+  pub frames: Vec<Frame>,
+  pub opacity: f16,
+  pub visible: bool,
+  pub locked: bool,
+  pub selected: bool,
+  pub alpha_locked: bool,
+  /// Default: Normal
+  pub blend_mode: BlendMode,
+  /// Cropping masks, sorted in the actual order.
+  /// A higher index means being above.
+  /// Default: []
+  pub cropping_masks: Vec<Entry>,
+  /// Clipping masks, sorted in the actual order.
+  /// A higher index means being above.
+  /// Default: []
+  pub clipping_masks: Vec<Entry>,
+  /// Default: (0, 0, 0, 0)
+  pub color: ArgbColor,
+  /// Default: []
+  pub fxs: Vec<Fx>,
+  /// Default: []
+  pub magics: Vec<Magic>,
+  remaining_data: Vec<u8>,
 }
 
 /// Header data of Stats.
@@ -3906,6 +4065,8 @@ pub struct Artwork {
   pub modifiers: Vec<Modifier>,
   /// Default: (1, 1)
   pub pixel_size: Size,
+  /// Default: []
+  pub magic_layers: Vec<MagicLayer>,
   remaining_data: Vec<u8>,
 }
 
@@ -4103,6 +4264,7 @@ impl<'a> Artwork {
         tiled_corners,
         modifiers,
         pixel_size,
+        magic_layers: vec![],
         remaining_data: remaining_data.into(),
       },
     ))
