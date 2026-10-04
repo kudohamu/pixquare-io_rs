@@ -3904,6 +3904,8 @@ pub struct Artwork {
   pub tiled_corners: Corners,
   /// Default: []
   pub modifiers: Vec<Modifier>,
+  /// Default: (1, 1)
+  pub pixel_size: Size,
   remaining_data: Vec<u8>,
 }
 
@@ -4040,6 +4042,7 @@ impl<'a> Artwork {
         is_need_timelapse,
         tiled_corners,
         modifiers,
+        pixel_size,
       ),
     ) = (
       dumb_string(header.id_len as usize),
@@ -4068,6 +4071,7 @@ impl<'a> Artwork {
       bool,
       corners,
       array_type(Modifier::parse),
+      size,
     )
       .parse(input)?;
 
@@ -4098,6 +4102,7 @@ impl<'a> Artwork {
         is_need_timelapse,
         tiled_corners,
         modifiers,
+        pixel_size,
         remaining_data: remaining_data.into(),
       },
     ))
@@ -4154,6 +4159,7 @@ impl ModelMarshal for Artwork {
     self.is_need_timelapse.marshal(&mut w)?;
     self.tiled_corners.marshal(&mut w)?;
     self.modifiers.marshal(&mut w)?;
+    self.pixel_size.marshal(&mut w)?;
     TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
     let file_size = w.written_bytes();
@@ -4263,6 +4269,7 @@ mod tests {
       }
     );
     assert!(artwork.modifiers.is_empty());
+    assert_eq!(artwork.pixel_size, Size::new(1, 1));
     assert!(artwork.remaining_data.is_empty());
   }
 
@@ -5493,6 +5500,19 @@ mod tests {
   }
 
   #[test]
+  fn test_parse_pixel_size_data() {
+    let path = "assets/fixtures/pixel_size.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.canvas_size, Size::new(64, 64));
+    assert_eq!(artwork.pixel_size, Size::new(2, 2));
+  }
+
+  #[test]
   fn test_marshal_simple_data() {
     let path = "assets/fixtures/simple.px";
     let original_file_data = std::fs::read(path).unwrap();
@@ -5845,6 +5865,20 @@ mod tests {
   #[test]
   fn test_marshal_modifier_speed_multiplier_data() {
     let path = "assets/fixtures/modifier-speed_multiplier.px";
+    let original_file_data = std::fs::read(path).unwrap();
+    let original_file = Artwork::read(&original_file_data).unwrap();
+
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
+    assert!(result.is_ok());
+
+    let file = Artwork::read(&written_file_data);
+    assert!(file.is_ok());
+  }
+
+  #[test]
+  fn test_marshal_pixel_size_data() {
+    let path = "assets/fixtures/pixel_size.px";
     let original_file_data = std::fs::read(path).unwrap();
     let original_file = Artwork::read(&original_file_data).unwrap();
 
