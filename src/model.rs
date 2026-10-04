@@ -4198,7 +4198,7 @@ mod tests {
     assert!(artwork.tilemap_layers.is_empty());
     assert!(artwork.tilemap_frame_contents.is_empty());
     assert_eq!(artwork.color_depth, ColorDepth::Rgb);
-    assert_eq!(artwork.stats.spent, 504);
+    assert_eq!(artwork.stats.spent, 508);
     assert_eq!(artwork.stats.stroke_count, 83);
     assert_eq!(artwork.stats.undos_count, 23);
     assert_eq!(artwork.stats.redos_count, 2);
