@@ -1820,7 +1820,6 @@ pub enum Magic {
   Skewing(MagicSkewingContent),
   Tween(MagicTweenContent),
   Wave(MagicWaveContent),
-  Unknown(MagicUnknownContent),
 }
 
 impl Magic {
@@ -1848,12 +1847,21 @@ impl Magic {
 
         Ok((input, Self::Wave(content)))
       }
-      v => {
-        let (input, content) = MagicUnknownContent::parser(0 as usize, v).parse(input)?;
-
-        Ok((input, Self::Unknown(content)))
-      }
+      _ => Err(nom::Err::Error(ParseError::InvalidMagicType)),
     }
+  }
+}
+
+impl Marshal for Magic {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    match self {
+      Self::Parallax(content) => content.marshal(w)?,
+      Self::Skewing(content) => content.marshal(w)?,
+      Self::Tween(content) => content.marshal(w)?,
+      Self::Wave(content) => content.marshal(w)?,
+    }
+
+    Ok(())
   }
 }
 
@@ -1883,6 +1891,20 @@ impl MagicParallaxContent {
         _unused,
       },
     ))
+  }
+}
+
+impl Marshal for MagicParallaxContent {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let magic_type: u16 = 0;
+    magic_type.marshal(w)?;
+    let _ = self.id.marshal(w)?;
+    self.enabled.marshal(w)?;
+    self.x.marshal(w)?;
+    self.y.marshal(w)?;
+    self._unused.marshal(w)?;
+
+    Ok(())
   }
 }
 
@@ -1920,6 +1942,21 @@ impl MagicSkewingContent {
         count,
       },
     ))
+  }
+}
+
+impl Marshal for MagicSkewingContent {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let magic_type: u16 = 1;
+    magic_type.marshal(w)?;
+    let _ = self.id.marshal(w)?;
+    self.enabled.marshal(w)?;
+    self.axis.marshal(w)?;
+    self.step.marshal(w)?;
+    self.size.marshal(w)?;
+    self.count.marshal(w)?;
+
+    Ok(())
   }
 }
 
@@ -1963,6 +2000,22 @@ impl MagicTweenContent {
   }
 }
 
+impl Marshal for MagicTweenContent {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let magic_type: u16 = 2;
+    magic_type.marshal(w)?;
+    let _ = self.id.marshal(w)?;
+    self.enabled.marshal(w)?;
+    self.curve.marshal(w)?;
+    self.properties.marshal(w)?;
+    self.frame_count.marshal(w)?;
+    self.auto_reverse.marshal(w)?;
+    self.loop_count.marshal(w)?;
+
+    Ok(())
+  }
+}
+
 /// Content data of wave for magic.
 #[derive(Debug, Clone)]
 pub struct MagicWaveContent {
@@ -1993,42 +2046,30 @@ impl MagicWaveContent {
   }
 }
 
-/// Content data of unknown magic.
-#[derive(Debug, Clone)]
-pub struct MagicUnknownContent {
-  data_type_value: u16,
-  remaining_data: Vec<u8>,
-}
+impl Marshal for MagicWaveContent {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let magic_type: u16 = 3;
+    magic_type.marshal(w)?;
+    let _ = self.id.marshal(w)?;
+    self.enabled.marshal(w)?;
+    self.size.marshal(w)?;
+    self.step.marshal(w)?;
+    self.angle.marshal(w)?;
+    self.frame_count.marshal(w)?;
 
-impl<'a> MagicUnknownContent {
-  fn parser(
-    data_size: usize,
-    data_type_value: u16,
-  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
-    move |input: &'a [u8]| {
-      let (rest, remaining_data) = take(data_size).parse(input)?;
-
-      Ok((
-        rest,
-        Self {
-          data_type_value,
-          remaining_data: remaining_data.into(),
-        },
-      ))
-    }
+    Ok(())
   }
 }
 
 /// Property data of Magic.
 ///
 /// <https://docs.pixquare.art/pixquare-file/binary-specs#magic>
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum MagicProperty {
   ColorAdjuestment(MagicPropertyColorAdjustmentContent),
   Displacement(MagicPropertyDisplacementContent),
   Scale(MagicPropertyScaleContent),
   Rotation(MagicPropertyRotationContent),
-  Unknown(MagicPropertyUnknownContent),
 }
 
 impl MagicProperty {
@@ -2056,12 +2097,21 @@ impl MagicProperty {
 
         Ok((input, Self::Rotation(content)))
       }
-      v => {
-        let (input, content) = MagicPropertyUnknownContent::parser(0 as usize, v).parse(input)?;
-
-        Ok((input, Self::Unknown(content)))
-      }
+      _ => Err(nom::Err::Error(ParseError::InvalidMagicPropertyType)),
     }
+  }
+}
+
+impl Marshal for MagicProperty {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    match self {
+      Self::ColorAdjuestment(content) => content.marshal(w)?,
+      Self::Displacement(content) => content.marshal(w)?,
+      Self::Scale(content) => content.marshal(w)?,
+      Self::Rotation(content) => content.marshal(w)?,
+    }
+
+    Ok(())
   }
 }
 
@@ -2105,6 +2155,21 @@ impl MagicPropertyColorAdjustmentContent {
   }
 }
 
+impl Marshal for MagicPropertyColorAdjustmentContent {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let magic_type: u16 = 0;
+    magic_type.marshal(w)?;
+    self.first_value.marshal(w)?;
+    self.second_value.marshal(w)?;
+    self.third_value.marshal(w)?;
+    self.alpha_shift.marshal(w)?;
+    self.tone.marshal(w)?;
+    self.color_space.marshal(w)?;
+
+    Ok(())
+  }
+}
+
 /// Content data of displacement for magic property.
 #[derive(Debug, Clone, Copy)]
 pub struct MagicPropertyDisplacementContent {
@@ -2116,6 +2181,16 @@ impl MagicPropertyDisplacementContent {
     let (rest, displacement) = coordinate(input)?;
 
     Ok((rest, Self { displacement }))
+  }
+}
+
+impl Marshal for MagicPropertyDisplacementContent {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let magic_type: u16 = 1;
+    magic_type.marshal(w)?;
+    self.displacement.marshal(w)?;
+
+    Ok(())
   }
 }
 
@@ -2144,6 +2219,19 @@ impl MagicPropertyScaleContent {
   }
 }
 
+impl Marshal for MagicPropertyScaleContent {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let magic_type: u16 = 2;
+    magic_type.marshal(w)?;
+    self.top.marshal(w)?;
+    self.bottom.marshal(w)?;
+    self.left.marshal(w)?;
+    self.right.marshal(w)?;
+
+    Ok(())
+  }
+}
+
 /// Content data of rotation for magic property.
 #[derive(Debug, Clone, Copy)]
 pub struct MagicPropertyRotationContent {
@@ -2158,29 +2246,13 @@ impl MagicPropertyRotationContent {
   }
 }
 
-/// Content data of unknown magic property.
-#[derive(Debug, Clone)]
-pub struct MagicPropertyUnknownContent {
-  data_type_value: u16,
-  remaining_data: Vec<u8>,
-}
+impl Marshal for MagicPropertyRotationContent {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let magic_type: u16 = 3;
+    magic_type.marshal(w)?;
+    self.angle.marshal(w)?;
 
-impl<'a> MagicPropertyUnknownContent {
-  fn parser(
-    data_size: usize,
-    data_type_value: u16,
-  ) -> impl Parser<&'a [u8], Output = Self, Error = ParseError<&'a [u8]>> + Clone {
-    move |input: &'a [u8]| {
-      let (rest, remaining_data) = take(data_size).parse(input)?;
-
-      Ok((
-        rest,
-        Self {
-          data_type_value,
-          remaining_data: remaining_data.into(),
-        },
-      ))
-    }
+    Ok(())
   }
 }
 
@@ -2899,6 +2971,7 @@ impl ModelMarshal for TilemapLayer {
 }
 
 /// Header data of MagicLayer.
+///
 /// 32 bytes
 #[derive(Debug)]
 struct MagicLayerHeader {
@@ -2912,6 +2985,14 @@ impl MagicLayerHeader {
     let (_input, data_size) = le_u32.parse(input)?;
 
     Ok((rest, Self { data_size }))
+  }
+}
+
+impl Marshal for MagicLayerHeader {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    self.data_size.marshal(w)?;
+
+    Ok(())
   }
 }
 
@@ -3014,6 +3095,34 @@ impl MagicLayer {
         remaining_data: remaining_data.into(),
       },
     ))
+  }
+}
+
+impl ModelMarshal for MagicLayer {
+  type Header = MagicLayerHeader;
+  const HEADER_SIZE: usize = 32usize;
+
+  fn write_data<W: CountingWrite>(&self, w: &mut W) -> PMResult<Self::Header> {
+    let _ = self.id.marshal(w)?;
+    let _ = self.name.marshal(w)?;
+    self.frames.marshal(w)?;
+    self.opacity.marshal(w)?;
+    self.visible.marshal(w)?;
+    self.locked.marshal(w)?;
+    self.selected.marshal(w)?;
+    self.alpha_locked.marshal(w)?;
+    self.blend_mode.marshal(w)?;
+    self.cropping_masks.marshal(w)?;
+    self.clipping_masks.marshal(w)?;
+    self.color.marshal(w)?;
+    self.fxs.marshal(w)?;
+    self.magics.marshal(w)?;
+    self.remaining_data.marshal(w)?;
+
+    let data_size = w.written_bytes();
+    Ok(MagicLayerHeader {
+      data_size: data_size as u32,
+    })
   }
 }
 
@@ -4657,6 +4766,7 @@ impl ModelMarshal for Artwork {
     self.tiled_corners.marshal(&mut w)?;
     self.modifiers.marshal(&mut w)?;
     self.pixel_size.marshal(&mut w)?;
+    self.magic_layers.marshal(w)?;
     TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
     let file_size = w.written_bytes();
@@ -6049,6 +6159,7 @@ mod tests {
     assert_eq!(parallax1.x, -8);
     assert_eq!(parallax1.y, 0);
     assert_eq!(parallax1._unused, 0);
+    assert!(artwork.magic_layers[0].remaining_data.is_empty());
     // Magic Layer 2
     assert_eq!(artwork.magic_layers[1].name, "Magic Layer 2");
     assert_eq!(artwork.magic_layers[1].frames.len(), 8);
@@ -6069,6 +6180,7 @@ mod tests {
     assert_eq!(parallax2.x, 0);
     assert_eq!(parallax2.y, 8);
     assert_eq!(parallax2._unused, 0);
+    assert!(artwork.magic_layers[1].remaining_data.is_empty());
     // Magic Layer 3
     assert_eq!(artwork.magic_layers[2].name, "Magic Layer 3");
     assert_eq!(artwork.magic_layers[2].frames.len(), 8);
@@ -6089,6 +6201,7 @@ mod tests {
     assert_eq!(parallax3.x, 4);
     assert_eq!(parallax3.y, 0);
     assert_eq!(parallax3._unused, 0);
+    assert!(artwork.magic_layers[2].remaining_data.is_empty());
   }
 
   #[test]
@@ -6124,7 +6237,7 @@ mod tests {
     assert_eq!(skewing1.step, 1);
     assert_eq!(skewing1.size, 6);
     assert_eq!(skewing1.count, 2);
-
+    assert!(artwork.magic_layers[0].remaining_data.is_empty());
     // Magic Layer 2
     assert_eq!(artwork.magic_layers[1].name, "Magic Layer 2");
     assert_eq!(artwork.magic_layers[1].frames.len(), 6);
@@ -6144,6 +6257,7 @@ mod tests {
     assert_eq!(skewing2.step, 2);
     assert_eq!(skewing2.size, 3);
     assert_eq!(skewing2.count, 4);
+    assert!(artwork.magic_layers[1].remaining_data.is_empty());
   }
 
   #[test]
@@ -6194,7 +6308,7 @@ mod tests {
     assert_eq!(tween1.frame_count, 7);
     assert_eq!(tween1.auto_reverse, true);
     assert_eq!(tween1.loop_count, 0);
-
+    assert!(artwork.magic_layers[0].remaining_data.is_empty());
     // Magic Layer 2
     assert_eq!(artwork.magic_layers[1].name, "Magic Layer 2");
     assert_eq!(artwork.magic_layers[1].frames.len(), 12);
@@ -6224,6 +6338,7 @@ mod tests {
     assert_eq!(tween1.frame_count, 12);
     assert_eq!(tween1.auto_reverse, false);
     assert_eq!(tween1.loop_count, 3);
+    assert!(artwork.magic_layers[1].remaining_data.is_empty());
   }
 
   #[test]
@@ -6648,6 +6763,62 @@ mod tests {
   #[test]
   fn test_marshal_pixel_size_data() {
     let path = "assets/fixtures/pixel_size.px";
+    let original_file_data = std::fs::read(path).unwrap();
+    let original_file = Artwork::read(&original_file_data).unwrap();
+
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
+    assert!(result.is_ok());
+
+    let file = Artwork::read(&written_file_data);
+    assert!(file.is_ok());
+  }
+
+  #[test]
+  fn test_marshal_magic_layer_parallax_data() {
+    let path = "assets/fixtures/magic_layer-parallax.px";
+    let original_file_data = std::fs::read(path).unwrap();
+    let original_file = Artwork::read(&original_file_data).unwrap();
+
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
+    assert!(result.is_ok());
+
+    let file = Artwork::read(&written_file_data);
+    assert!(file.is_ok());
+  }
+
+  #[test]
+  fn test_marshal_magic_layer_skewing_data() {
+    let path = "assets/fixtures/magic_layer-skewing.px";
+    let original_file_data = std::fs::read(path).unwrap();
+    let original_file = Artwork::read(&original_file_data).unwrap();
+
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
+    assert!(result.is_ok());
+
+    let file = Artwork::read(&written_file_data);
+    assert!(file.is_ok());
+  }
+
+  #[test]
+  fn test_marshal_magic_layer_tween_data() {
+    let path = "assets/fixtures/magic_layer-tween.px";
+    let original_file_data = std::fs::read(path).unwrap();
+    let original_file = Artwork::read(&original_file_data).unwrap();
+
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
+    assert!(result.is_ok());
+
+    let file = Artwork::read(&written_file_data);
+    assert!(file.is_ok());
+  }
+
+  #[test]
+  fn test_marshal_magic_layer_wave_data() {
+    let path = "assets/fixtures/magic_layer-wave.px";
     let original_file_data = std::fs::read(path).unwrap();
     let original_file = Artwork::read(&original_file_data).unwrap();
 
