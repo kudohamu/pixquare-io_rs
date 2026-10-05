@@ -4599,6 +4599,11 @@ impl<'a> Artwork {
     layer_frames_len.max(tilemap_layer_frames_len)
   }
 
+  /// Returns size of the rendering image, accounting for pixel size and other factors.
+  pub fn render_size(&self) -> Size {
+    self.canvas_size * self.pixel_size
+  }
+
   /// Refresh artwork images by current binary data.
   /// This method must be called whenever the binary data of a FrameContent or Tileset image is updated.
   pub fn refresh_images(&mut self) -> Result<(), ArtworkOperationError> {
@@ -4726,11 +4731,40 @@ impl<'a> Artwork {
 
     render_plan.render_onto(&mut composited_image)?;
 
+    composited_image = self.scale_image(&composited_image);
+
     for ps in &self.post_processors {
-      ps.apply(&mut composited_image, &self.canvas_size)?;
+      ps.apply(&mut composited_image, &self.render_size())?;
     }
 
     Ok(composited_image)
+  }
+
+  fn scale_image(&self, image: &[ArgbColor]) -> Vec<ArgbColor> {
+    let scaled_width = self.canvas_size.width as usize * self.pixel_size.width as usize;
+    let mut scaled_image =
+      vec![
+        ArgbColor::TRANSPARENT;
+        image.len() * self.pixel_size.width as usize * self.pixel_size.height as usize
+      ];
+
+    for (original_index, pixel) in image.iter().enumerate() {
+      let original_x = original_index % self.canvas_size.width as usize;
+      let original_y = original_index / self.canvas_size.width as usize;
+
+      for offset_x in 0..self.pixel_size.width as usize {
+        let scaled_x = original_x * self.pixel_size.width as usize + offset_x;
+
+        for offset_y in 0..self.pixel_size.height as usize {
+          let scaled_y = original_y * self.pixel_size.height as usize + offset_y;
+          let scaled_index = scaled_y * scaled_width + scaled_x;
+
+          scaled_image[scaled_index] = pixel.clone();
+        }
+      }
+    }
+
+    scaled_image
   }
 }
 

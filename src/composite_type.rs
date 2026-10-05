@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::{io::Write, ops::Mul};
 
 use msgw3c::Blend;
 
@@ -43,6 +43,17 @@ impl Marshal for Size {
     self.height.marshal(w)?;
 
     Ok(())
+  }
+}
+
+impl Mul for Size {
+  type Output = Size;
+
+  fn mul(self, rhs: Self) -> Self::Output {
+    Self::Output {
+      width: self.width * rhs.width,
+      height: self.height * rhs.height,
+    }
   }
 }
 
