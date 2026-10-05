@@ -12,6 +12,9 @@ categories = ["graphics", "parser-implementations"]
 [lib]
 name = "pixquare"
 
+[registry]
+global-min-publish-age = "7 days"
+
 [dependencies]
 flate2 = { version = "1.1.9", features = ["zlib-rs"], default-features = false }
 half = "2.7.1"
