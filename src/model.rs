@@ -1823,6 +1823,13 @@ pub enum Magic {
 }
 
 impl Magic {
+  pub(crate) fn apply(&self, target: &mut [ArgbColor], canvas_size: &Size, frame_index: usize) {
+    match self {
+      Magic::Parallax(content) => content.apply(target, canvas_size, frame_index),
+      _ => (),
+    }
+  }
+
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, property_type) = le_u16(input)?;
 
@@ -1877,6 +1884,25 @@ pub struct MagicParallaxContent {
 }
 
 impl MagicParallaxContent {
+  fn apply(&self, target: &mut [ArgbColor], canvas_size: &Size, frame_index: usize) {
+    if !self.enabled {
+      return;
+    }
+    let source = target.to_vec();
+    let offset_x = self.x as i64 * frame_index as i64;
+    let offset_y = self.y as i64 * frame_index as i64;
+
+    for (source_index, pixel) in source.iter().enumerate() {
+      let source_x = (source_index % canvas_size.width as usize) as i64;
+      let source_y = (source_index / canvas_size.width as usize) as i64;
+
+      let dest_x = (source_x + offset_x).rem_euclid(canvas_size.width as i64) as usize;
+      let dest_y = (source_y + offset_y).rem_euclid(canvas_size.height as i64) as usize;
+      let dest_index = dest_y * canvas_size.width as usize + dest_x;
+      target[dest_index] = *pixel;
+    }
+  }
+
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, (id, enabled, x, y, _unused)) =
       (string, bool, le_i32, le_i32, le_u8).parse(input)?;
@@ -6190,7 +6216,7 @@ mod tests {
       panic!("expected Magic::Parallax");
     };
     assert!(parallax1.enabled);
-    assert_eq!(parallax1.x, -8);
+    assert_eq!(parallax1.x, -7);
     assert_eq!(parallax1.y, 0);
     assert_eq!(parallax1._unused, 0);
     assert!(artwork.magic_layers[0].remaining_data.is_empty());

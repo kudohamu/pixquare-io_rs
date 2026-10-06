@@ -4,7 +4,10 @@ use msgw3c::{batch_blend_with_in_place, batch_normal_in_place, composite::Porter
 use crate::{
   composite_type::{ArgbColor, BlendMode, EntryType, Size},
   error::ArtworkOperationError,
-  model::{Artwork, Entry, Frame, FrameContent, Layer, TilemapFrameContent, TilemapLayer, Tileset},
+  model::{
+    Artwork, Entry, Frame, FrameContent, Layer, MagicLayer, TilemapFrameContent, TilemapLayer,
+    Tileset,
+  },
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,6 +44,18 @@ pub(crate) enum RenderPlan<'a> {
     tileset: &'a Tileset,
     canvas_size: Size,
     base_index: usize,
+  },
+  MagicLayer {
+    layer: &'a MagicLayer,
+    frame_index: usize,
+    frame: &'a Frame,
+    content: &'a FrameContent,
+    base_index: usize,
+    has_clipping_masks: bool,
+    has_cropping_masks: bool,
+    clipping_masks: Vec<RenderPlan<'a>>,
+    cropping_masks: Vec<RenderPlan<'a>>,
+    canvas_size: Size,
   },
 }
 
@@ -219,6 +234,63 @@ impl<'a> RenderPlan<'a> {
           };
           plans.push(plan);
         }
+        EntryType::MagicLayer => {
+          let layer = artwork
+            .magic_layers
+            .iter()
+            .find(|layer| layer.id == entry.id)
+            .ok_or(ArtworkOperationError::LayerNotFound(entry.id.clone()))?;
+
+          if visibility == LayerVisibility::Visible && !layer.visible {
+            continue;
+          }
+
+          let frame =
+            layer
+              .frames
+              .get(frame_index)
+              .ok_or(ArtworkOperationError::FrameIndexOutOfBounds((
+                frame_index,
+                layer.frames.len(),
+              )))?;
+          let content = artwork
+            .frame_contents
+            .iter()
+            .find(|content| content.id == frame.content_id)
+            .ok_or(ArtworkOperationError::FrameContentNotFound(
+              frame.content_id.clone(),
+            ))?;
+
+          let mut clipping_masks =
+            Self::build_children(&layer.clipping_masks, artwork, frame_index, visibility)?;
+          clipping_masks.sort_by(|a, b| {
+            a.primary_order_index()
+              .cmp(&b.primary_order_index())
+              .then(a.secondary_order_index().cmp(&b.secondary_order_index()))
+          });
+
+          let mut cropping_masks =
+            Self::build_children(&layer.cropping_masks, artwork, frame_index, visibility)?;
+          cropping_masks.sort_by(|a, b| {
+            a.primary_order_index()
+              .cmp(&b.primary_order_index())
+              .then(a.secondary_order_index().cmp(&b.secondary_order_index()))
+          });
+
+          let plan = RenderPlan::MagicLayer {
+            layer,
+            frame_index,
+            frame,
+            content,
+            base_index,
+            has_clipping_masks: !layer.clipping_masks.is_empty(),
+            has_cropping_masks: !layer.cropping_masks.is_empty(),
+            clipping_masks,
+            cropping_masks,
+            canvas_size: artwork.canvas_size,
+          };
+          plans.push(plan);
+        }
         _ => (),
       }
     }
@@ -363,6 +435,53 @@ impl<'a> RenderPlan<'a> {
 
         Ok(())
       }
+      Self::MagicLayer {
+        layer,
+        frame_index,
+        frame,
+        content,
+        has_cropping_masks,
+        clipping_masks,
+        cropping_masks,
+        canvas_size,
+        ..
+      } => {
+        let Some(image) = &content._image else {
+          return Ok(());
+        };
+        let mut foreground = image.clone();
+
+        for magic in &layer.magics {
+          magic.apply(&mut foreground, canvas_size, *frame_index);
+        }
+
+        for fx in &layer.fxs {
+          foreground = fx.apply(&foreground, canvas_size)?;
+        }
+
+        if *has_cropping_masks {
+          apply_cropping(&mut foreground, cropping_masks)?;
+        } else {
+          for mask in clipping_masks {
+            mask.clip_onto(&mut foreground)?;
+          }
+        }
+
+        if frame.opacity == f16::from_f32(2.0) {
+          foreground.multiply_alpha_f32(layer.opacity.to_f32());
+        } else {
+          foreground.multiply_alpha_f32(frame.opacity.to_f32());
+        }
+
+        batch_blend_with_in_place(
+          &foreground,
+          backdrop,
+          self.effective_blend_mode().into(),
+          PorterDuff::SourceOver,
+        )?;
+
+        Ok(())
+      }
     }
   }
 
@@ -383,6 +502,13 @@ impl<'a> RenderPlan<'a> {
           frame.z_index
         }
       }
+      Self::MagicLayer { frame, .. } => {
+        if frame.z_index == 0 {
+          0
+        } else {
+          frame.z_index
+        }
+      }
     }
   }
 
@@ -391,6 +517,7 @@ impl<'a> RenderPlan<'a> {
       Self::Group { base_index, .. } => *base_index as i16,
       Self::RegularLayer { base_index, .. } => *base_index as i16,
       Self::TilemapLayer { base_index, .. } => *base_index as i16,
+      Self::MagicLayer { base_index, .. } => *base_index as i16,
     }
   }
 
@@ -431,6 +558,18 @@ impl<'a> RenderPlan<'a> {
       }
       Self::TilemapLayer { layer, .. } => layer.blend_mode,
       Self::Group { .. } => BlendMode::Normal,
+      Self::MagicLayer {
+        layer,
+        has_clipping_masks,
+        has_cropping_masks,
+        ..
+      } => {
+        if *has_clipping_masks || *has_cropping_masks {
+          BlendMode::Normal
+        } else {
+          layer.blend_mode
+        }
+      }
     }
   }
 }
