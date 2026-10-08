@@ -26,12 +26,19 @@ pub(crate) fn move_pixel_from_index(
   offset_x: i64,
   offset_y: i64,
 ) {
-  let source_x = (source_index % canvas_size.width as usize) as i64;
-  let source_y = (source_index / canvas_size.width as usize) as i64;
+  let width = canvas_size.width as usize;
+  let height = canvas_size.height as usize;
+  let source_x = (source_index % width) as i64;
+  let source_y = (source_index / width) as i64;
 
-  let dest_x = (source_x + offset_x as i64).rem_euclid(canvas_size.width as i64) as usize;
-  let dest_y = (source_y + offset_y as i64).rem_euclid(canvas_size.height as i64) as usize;
-  let dest_index = dest_y * canvas_size.width as usize + dest_x;
+  let dest_x = source_x + offset_x as i64;
+  let dest_y = source_y + offset_y as i64;
+
+  if dest_x < 0 || dest_x > width as i64 - 1 || dest_y < 0 || dest_y > height as i64 - 1 {
+    return;
+  }
+
+  let dest_index = dest_y as usize * width + dest_x as usize;
   target[dest_index] = source[source_index];
 }
 

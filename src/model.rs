@@ -1890,6 +1890,7 @@ impl MagicParallaxContent {
       return;
     }
     let source = target.to_vec();
+    target.fill(ArgbColor::TRANSPARENT);
     let offset_x = self.x as i64 * frame_index as i64;
     let offset_y = self.y as i64 * frame_index as i64;
 
@@ -1944,6 +1945,7 @@ impl MagicSkewingContent {
       return;
     }
     let source = target.to_vec();
+    target.fill(ArgbColor::TRANSPARENT);
 
     match self.axis {
       Axis::Vertical => {
@@ -1952,7 +1954,7 @@ impl MagicSkewingContent {
         };
 
         for x in (base_x)..canvas_size.width {
-          let band = i64::from(x - base_x) / i64::from(self.size);
+          let band = i64::from(x - base_x) / i64::from(self.size) - frame_index as i64;
           let peak = i64::from(self.count);
 
           let level = if peak == 0 {
@@ -1964,9 +1966,6 @@ impl MagicSkewingContent {
           };
 
           let offset = level * self.step as i64;
-          if offset == 0 {
-            continue;
-          }
           for y in 0..canvas_size.height {
             let source_index = y * canvas_size.width + x;
 
@@ -1987,7 +1986,7 @@ impl MagicSkewingContent {
         };
 
         for y in (base_y)..canvas_size.height {
-          let band = i64::from(y - base_y) / i64::from(self.size);
+          let band = i64::from(y - base_y) / i64::from(self.size) - frame_index as i64;
           let peak = i64::from(self.count);
 
           let level = if peak == 0 {
@@ -1999,9 +1998,6 @@ impl MagicSkewingContent {
           };
 
           let offset = level * self.step as i64;
-          if offset == 0 {
-            continue;
-          }
           for x in 0..canvas_size.width {
             let source_index = y * canvas_size.width + x;
 
