@@ -22,8 +22,8 @@ use crate::{
     Curve, CustomDataType, EntryType, FlipAxes, FxType, GuideLineType, ModifierType,
     PaletteOrganizationType, ProcessorType, Rect, Size, SymmetryType, Tone,
   },
+  effect::{move_pixel_from_index, smoothstep, wrapping_move_pixels_from_index},
   error::{ArtworkOperationError, MarshalError, PMResult, PPResult, ParseError},
-  interpolation::smoothstep,
   marshaler::Marshal,
   morphology::{hit_or_miss, inside_gradient, outside_gradient},
   primitive_type::{DumbString, OptionSet, TypeN},
@@ -1826,6 +1826,7 @@ impl Magic {
   pub(crate) fn apply(&self, target: &mut [ArgbColor], canvas_size: &Size, frame_index: usize) {
     match self {
       Magic::Parallax(content) => content.apply(target, canvas_size, frame_index),
+      Magic::Skewing(content) => content.apply(target, canvas_size, frame_index),
       _ => (),
     }
   }
@@ -1892,15 +1893,7 @@ impl MagicParallaxContent {
     let offset_x = self.x as i64 * frame_index as i64;
     let offset_y = self.y as i64 * frame_index as i64;
 
-    for (source_index, pixel) in source.iter().enumerate() {
-      let source_x = (source_index % canvas_size.width as usize) as i64;
-      let source_y = (source_index / canvas_size.width as usize) as i64;
-
-      let dest_x = (source_x + offset_x).rem_euclid(canvas_size.width as i64) as usize;
-      let dest_y = (source_y + offset_y).rem_euclid(canvas_size.height as i64) as usize;
-      let dest_index = dest_y * canvas_size.width as usize + dest_x;
-      target[dest_index] = *pixel;
-    }
+    wrapping_move_pixels_from_index(&source, target, canvas_size, offset_x, offset_y);
   }
 
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
@@ -1946,6 +1939,87 @@ pub struct MagicSkewingContent {
 }
 
 impl MagicSkewingContent {
+  fn apply(&self, target: &mut [ArgbColor], canvas_size: &Size, frame_index: usize) {
+    if !self.enabled {
+      return;
+    }
+    let source = target.to_vec();
+
+    match self.axis {
+      Axis::Vertical => {
+        let Some(base_x) = self.find_first_pixel_index(&source, canvas_size) else {
+          return;
+        };
+
+        for x in (base_x)..canvas_size.width {
+          let band = i64::from(x - base_x) / i64::from(self.size);
+          let peak = i64::from(self.count);
+
+          let level = if peak == 0 {
+            0
+          } else {
+            let period = peak * 2;
+            let phase = band.rem_euclid(period);
+            phase.min(period - phase)
+          };
+
+          let offset = level * self.step as i64;
+          if offset == 0 {
+            continue;
+          }
+          for y in 0..canvas_size.height {
+            let source_index = y * canvas_size.width + x;
+
+            move_pixel_from_index(
+              &source,
+              target,
+              source_index as usize,
+              canvas_size,
+              0,
+              offset,
+            );
+          }
+        }
+      }
+      Axis::Horizontal => {
+        let Some(base_y) = self.find_first_pixel_index(&source, canvas_size) else {
+          return;
+        };
+
+        for y in (base_y)..canvas_size.height {
+          let band = i64::from(y - base_y) / i64::from(self.size);
+          let peak = i64::from(self.count);
+
+          let level = if peak == 0 {
+            0
+          } else {
+            let period = peak * 2;
+            let phase = band.rem_euclid(period);
+            phase.min(period - phase)
+          };
+
+          let offset = level * self.step as i64;
+          if offset == 0 {
+            continue;
+          }
+          for x in 0..canvas_size.width {
+            let source_index = y * canvas_size.width + x;
+
+            move_pixel_from_index(
+              &source,
+              target,
+              source_index as usize,
+              canvas_size,
+              offset,
+              0,
+            );
+          }
+        }
+      }
+      Axis::Unknown(_) => (),
+    }
+  }
+
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, (id, enabled, axis, step, size, count)) = (
       string,
@@ -1968,6 +2042,38 @@ impl MagicSkewingContent {
         count,
       },
     ))
+  }
+
+  fn find_first_pixel_index(&self, source: &[ArgbColor], canvas_size: &Size) -> Option<u32> {
+    match self.axis {
+      Axis::Vertical => {
+        for x in 0..canvas_size.width {
+          for y in 0..canvas_size.height {
+            let index = y * canvas_size.width + x;
+
+            if source[index as usize].a != 0 {
+              return Some(x);
+            }
+          }
+        }
+
+        None
+      }
+      Axis::Horizontal => {
+        for y in 0..canvas_size.height {
+          for x in 0..canvas_size.width {
+            let index = y * canvas_size.width + x;
+
+            if source[index as usize].a != 0 {
+              return Some(y);
+            }
+          }
+        }
+
+        None
+      }
+      Axis::Unknown(_) => None,
+    }
   }
 }
 

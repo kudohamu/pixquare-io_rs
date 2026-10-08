@@ -21,8 +21,8 @@
 
 mod combinator;
 pub mod composite_type;
+mod effect;
 pub mod error;
-mod interpolation;
 mod marshaler;
 pub mod model;
 mod morphology;
