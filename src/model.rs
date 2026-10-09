@@ -1827,6 +1827,7 @@ impl Magic {
     match self {
       Magic::Parallax(content) => content.apply(target, canvas_size, frame_index),
       Magic::Skewing(content) => content.apply(target, canvas_size, frame_index),
+      Magic::Wave(content) => content.apply(target, canvas_size, frame_index),
       _ => (),
     }
   }
@@ -2156,6 +2157,37 @@ pub struct MagicWaveContent {
 }
 
 impl MagicWaveContent {
+  fn apply(&self, target: &mut [ArgbColor], canvas_size: &Size, frame_index: usize) {
+    if !self.enabled {
+      return;
+    }
+    let source = target.to_vec();
+    target.fill(ArgbColor::TRANSPARENT);
+
+    let force_x = f64::from(self.angle).cos();
+    let force_y = f64::from(self.angle).sin();
+    let phase =
+      (std::f64::consts::TAU * f64::from(frame_index as u32) / f64::from(self.frame_count)).sin();
+
+    for x in 0..canvas_size.width {
+      for y in 0..canvas_size.height {
+        let displacement = f64::from(self.step) * phase;
+
+        let offset_x = displacement * force_x;
+        let offset_y = displacement * force_y;
+        let source_index = (y * canvas_size.width + x) as usize;
+        move_pixel_from_index(
+          &source,
+          target,
+          source_index,
+          canvas_size,
+          offset_x.round() as i64,
+          offset_y.round() as i64,
+        );
+      }
+    }
+  }
+
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, (id, enabled, size, step, angle, frame_count)) =
       (string, bool, le_u32, le_u32, le_f32, le_u32).parse(input)?;
