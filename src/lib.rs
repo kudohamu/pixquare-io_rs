@@ -28,6 +28,7 @@ pub mod model;
 mod morphology;
 pub mod primitive_type;
 mod processing;
+mod trigonometry;
 pub mod utility_type;
 mod writer;
 

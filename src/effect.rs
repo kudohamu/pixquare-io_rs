@@ -42,6 +42,26 @@ pub(crate) fn move_pixel_from_index(
   target[dest_index] = source[source_index];
 }
 
+pub(crate) fn copy_pixel(
+  source: &[ArgbColor],
+  target: &mut [ArgbColor],
+  canvas_size: &Size,
+  source_x: usize,
+  source_y: usize,
+  dest_x: usize,
+  dest_y: usize,
+) {
+  let source_index = source_y * canvas_size.width as usize + source_x;
+  let dest_index = dest_y * canvas_size.width as usize + dest_x;
+
+  if source_x > (canvas_size.width - 1) as usize || source_y > (canvas_size.height - 1) as usize {
+    target[dest_index] = source[dest_index];
+    return;
+  }
+
+  target[dest_index] = source[source_index];
+}
+
 pub(crate) fn smoothstep(d: f64, r_in: f64, r_out: f64) -> f64 {
   let t = ((d - r_in) / (r_out - r_in)).clamp(0., 1.);
 

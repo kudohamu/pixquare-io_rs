@@ -22,7 +22,7 @@ use crate::{
     Curve, CustomDataType, EntryType, FlipAxes, FxType, GuideLineType, ModifierType,
     PaletteOrganizationType, ProcessorType, Rect, Size, SymmetryType, Tone,
   },
-  effect::{move_pixel_from_index, smoothstep, wrapping_move_pixels_from_index},
+  effect::{copy_pixel, move_pixel_from_index, smoothstep, wrapping_move_pixels_from_index},
   error::{ArtworkOperationError, MarshalError, PMResult, PPResult, ParseError},
   marshaler::Marshal,
   morphology::{hit_or_miss, inside_gradient, outside_gradient},
@@ -31,6 +31,7 @@ use crate::{
     adjust_intensity, adjust_threshold, apply_gaussian_blur, create_bloom_difference,
     create_bloom_source,
   },
+  trigonometry::{safe_cos, safe_sin},
   utility_type::{LayerVisibility, RenderPlan},
   writer::{CountingWrite, CountingWriter},
 };
@@ -2164,25 +2165,31 @@ impl MagicWaveContent {
     let source = target.to_vec();
     target.fill(ArgbColor::TRANSPARENT);
 
-    let force_x = f64::from(self.angle).cos();
-    let force_y = f64::from(self.angle).sin();
-    let phase =
-      (std::f64::consts::TAU * f64::from(frame_index as u32) / f64::from(self.frame_count)).sin();
+    let force_x = f64::from(safe_cos(self.angle));
+    let force_y = f64::from(safe_sin(self.angle));
+    let frame_phase =
+      std::f64::consts::TAU * f64::from(frame_index as u32) / f64::from(self.frame_count);
 
     for x in 0..canvas_size.width {
       for y in 0..canvas_size.height {
-        let displacement = f64::from(self.step) * phase;
+        let u = f64::from(x) * force_x + f64::from(y) * force_y;
+        let spatial_phase = std::f64::consts::TAU * u / f64::from(self.size);
 
-        let offset_x = displacement * force_x;
-        let offset_y = displacement * force_y;
-        let source_index = (y * canvas_size.width + x) as usize;
-        move_pixel_from_index(
+        let displacement = f64::from(self.step) * (spatial_phase - frame_phase).sin();
+
+        let source_x = f64::from(x) + displacement * force_x;
+        let source_y = f64::from(y) + displacement * force_y;
+
+        let normalized_source_x = source_x.round() as usize;
+        let normalized_source_y = source_y.round() as usize;
+        copy_pixel(
           &source,
           target,
-          source_index,
           canvas_size,
-          offset_x.round() as i64,
-          offset_y.round() as i64,
+          normalized_source_x,
+          normalized_source_y,
+          x as usize,
+          y as usize,
         );
       }
     }
