@@ -1827,8 +1827,8 @@ impl Magic {
     match self {
       Magic::Parallax(content) => content.apply(target, canvas_size, frame_index),
       Magic::Skewing(content) => content.apply(target, canvas_size, frame_index),
+      Magic::Tween(content) => content.apply(target, canvas_size, frame_index),
       Magic::Wave(content) => content.apply(target, canvas_size, frame_index),
-      _ => (),
     }
   }
 
@@ -2102,6 +2102,37 @@ pub struct MagicTweenContent {
 }
 
 impl MagicTweenContent {
+  fn apply(&self, target: &mut [ArgbColor], canvas_size: &Size, frame_index: usize) {
+    if !self.enabled {
+      return;
+    }
+    let source = target.to_vec();
+    target.fill(ArgbColor::TRANSPARENT);
+
+    let cycle_len = if self.auto_reverse {
+      2 * (u64::from(self.frame_count) - 1)
+    } else {
+      u64::from(self.frame_count)
+    };
+    let loop_count = frame_index as u64 / cycle_len;
+    let frame_step = frame_index as u64 % cycle_len;
+    let progress = if self.loop_count != 0 && loop_count >= u64::from(self.loop_count) {
+      if self.auto_reverse { 0. } else { 1. }
+    } else if self.auto_reverse {
+      if frame_step > u64::from(self.frame_count - 1) {
+        (2 * u64::from(self.frame_count - 1) - frame_step) as f64 / f64::from(self.frame_count - 1)
+      } else {
+        frame_step as f64 / f64::from(self.frame_count - 1)
+      }
+    } else {
+      frame_step as f64 / f64::from(self.frame_count - 1)
+    };
+
+    for property in &self.properties {
+      property.apply(&source, target, canvas_size, progress);
+    }
+  }
+
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, (id, enabled, curve, properties, frame_count, auto_reverse, loop_count)) = (
       string,
@@ -2250,6 +2281,19 @@ pub enum MagicProperty {
 }
 
 impl MagicProperty {
+  fn apply(
+    &self,
+    source: &[ArgbColor],
+    target: &mut [ArgbColor],
+    canvas_size: &Size,
+    progress: f64,
+  ) {
+    match self {
+      MagicProperty::Displacement(content) => content.apply(source, target, canvas_size, progress),
+      _ => (),
+    }
+  }
+
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (input, property_type) = le_u16(input)?;
 
@@ -2354,6 +2398,32 @@ pub struct MagicPropertyDisplacementContent {
 }
 
 impl MagicPropertyDisplacementContent {
+  fn apply(
+    &self,
+    source: &[ArgbColor],
+    target: &mut [ArgbColor],
+    canvas_size: &Size,
+    progress: f64,
+  ) {
+    let offset_x = (f64::from(self.displacement.x) * progress).round() as i64;
+    let offset_y = (f64::from(self.displacement.y) * progress).round() as i64;
+
+    for x in 0..canvas_size.width {
+      for y in 0..canvas_size.height {
+        let source_index = y * canvas_size.width + x;
+
+        move_pixel_from_index(
+          &source,
+          target,
+          source_index as usize,
+          canvas_size,
+          offset_x,
+          offset_y,
+        );
+      }
+    }
+  }
+
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, displacement) = coordinate(input)?;
 
