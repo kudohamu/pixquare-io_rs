@@ -31,7 +31,6 @@ use crate::{
     adjust_intensity, adjust_threshold, apply_gaussian_blur, create_bloom_difference,
     create_bloom_source,
   },
-  trigonometry::{safe_cos, safe_sin},
   utility_type::{LayerVisibility, RenderPlan},
   writer::{CountingWrite, CountingWriter},
 };
@@ -2165,23 +2164,34 @@ impl MagicWaveContent {
     let source = target.to_vec();
     target.fill(ArgbColor::TRANSPARENT);
 
-    let force_x = f64::from(safe_cos(self.angle));
-    let force_y = f64::from(safe_sin(self.angle));
+    let vec_x = f64::from(self.angle).cos();
+    let vec_y = f64::from(self.angle).sin();
+    let start_phase = 0.;
     let frame_phase =
       std::f64::consts::TAU * f64::from(frame_index as u32) / f64::from(self.frame_count);
 
+    let d = |phase: f64| {
+      let a = 0.75;
+      let b = 0.25;
+      let delta = -std::f64::consts::PI / 12.;
+
+      a * phase.sin() + b * (2. * phase + delta).cos()
+    };
+
     for x in 0..canvas_size.width {
       for y in 0..canvas_size.height {
-        let u = f64::from(x) * force_x + f64::from(y) * force_y;
-        let spatial_phase = std::f64::consts::TAU * u / f64::from(self.size);
+        let u = f64::from(x) * vec_x + f64::from(y) * vec_y;
+        let pos_phase = std::f64::consts::TAU * u / f64::from(self.size);
+        let phase = pos_phase - frame_phase + start_phase;
+        let displacement = d(phase);
 
-        let displacement = f64::from(self.step) * (spatial_phase - frame_phase).sin();
+        let source_x = f64::from(x) + f64::from(self.step) * displacement * vec_x;
+        let source_y = f64::from(y) + f64::from(self.step) * displacement * vec_y;
 
-        let source_x = f64::from(x) + displacement * force_x;
-        let source_y = f64::from(y) + displacement * force_y;
-
-        let normalized_source_x = source_x.round() as usize;
-        let normalized_source_y = source_y.round() as usize;
+        let normalized_source_x =
+          (source_x.round() as usize).clamp(0, (canvas_size.width - 1) as usize);
+        let normalized_source_y =
+          (source_y.round() as usize).clamp(0, (canvas_size.height - 1) as usize);
         copy_pixel(
           &source,
           target,

@@ -54,11 +54,6 @@ pub(crate) fn copy_pixel(
   let source_index = source_y * canvas_size.width as usize + source_x;
   let dest_index = dest_y * canvas_size.width as usize + dest_x;
 
-  if source_x > (canvas_size.width - 1) as usize || source_y > (canvas_size.height - 1) as usize {
-    target[dest_index] = source[dest_index];
-    return;
-  }
-
   target[dest_index] = source[source_index];
 }
 
