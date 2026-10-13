@@ -25,7 +25,7 @@ use crate::{
   effect::{copy_pixel, move_pixel_from_index, smoothstep, wrapping_move_pixels_from_index},
   error::{ArtworkOperationError, MarshalError, PMResult, PPResult, ParseError},
   marshaler::Marshal,
-  morphology::{hit_or_miss, inside_gradient, outside_gradient},
+  morphology::{get_bounding_rect, hit_or_miss, inside_gradient, outside_gradient},
   primitive_type::{DumbString, OptionSet, TypeN},
   processing::{
     adjust_intensity, adjust_threshold, apply_gaussian_blur, create_bloom_difference,
@@ -2283,6 +2283,7 @@ impl MagicProperty {
   fn apply(&self, target: &mut [ArgbColor], canvas_size: &Size, progress: f64) {
     match self {
       MagicProperty::Displacement(content) => content.apply(target, canvas_size, progress),
+      MagicProperty::Rotation(content) => content.apply(target, canvas_size, progress),
       _ => (),
     }
   }
@@ -2476,10 +2477,58 @@ pub struct MagicPropertyRotationContent {
 }
 
 impl MagicPropertyRotationContent {
+  fn apply(&self, target: &mut [ArgbColor], canvas_size: &Size, progress: f64) {
+    let source = target.to_vec();
+    target.fill(ArgbColor::TRANSPARENT);
+
+    let center = Self::calc_bounding_center(&source, canvas_size);
+    let angle = f64::from(self.angle) * progress;
+    let (sin, cos) = angle.sin_cos();
+
+    for y in 0..canvas_size.height as usize {
+      for x in 0..canvas_size.width as usize {
+        let dx = f64::from(x as u32) - center.0;
+        let dy = f64::from(y as u32) - center.1;
+
+        let source_x = (center.0 + dx * cos + dy * sin).round();
+        let source_y = (center.1 - dx * sin + dy * cos).round();
+
+        if source_x < 0.
+          || source_x > f64::from(canvas_size.width - 1)
+          || source_y < 0.
+          || source_y > f64::from(canvas_size.height - 1)
+        {
+          continue;
+        }
+
+        copy_pixel(
+          &source,
+          target,
+          canvas_size,
+          source_x as usize,
+          source_y as usize,
+          x,
+          y,
+        );
+      }
+    }
+  }
+
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, angle) = le_f32.parse(input)?;
 
     Ok((rest, Self { angle }))
+  }
+
+  fn calc_bounding_center(source: &[ArgbColor], canvas_size: &Size) -> (f64, f64) {
+    let rect = get_bounding_rect(source, canvas_size);
+
+    let x_center = (f64::from(rect.right as u32) - f64::from(rect.left as u32)) / 2.
+      + f64::from(rect.left as u32);
+    let y_center = (f64::from(rect.bottom as u32) - f64::from(rect.top as u32)) / 2.
+      + f64::from(rect.top as u32);
+
+    (x_center, y_center)
   }
 }
 

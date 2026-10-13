@@ -9,7 +9,7 @@ use crate::{
 };
 
 /// <https://docs.pixquare.art/pixquare-file/binary-specs#coordinate>
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Coordinate {
   pub x: i32,
   pub y: i32,
@@ -25,7 +25,7 @@ impl Marshal for Coordinate {
 }
 
 /// <https://docs.pixquare.art/pixquare-file/binary-specs#size>
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Size {
   pub width: u32,
   pub height: u32,
@@ -58,7 +58,7 @@ impl Mul for Size {
 }
 
 /// <https://docs.pixquare.art/pixquare-file/binary-specs#rect>
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Rect {
   pub origin: Coordinate,
   pub size: Size,

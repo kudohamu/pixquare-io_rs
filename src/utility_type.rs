@@ -600,3 +600,11 @@ impl ArgbColorSlice for [ArgbColor] {
     }
   }
 }
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BoundingRect {
+  pub(crate) top: usize,
+  pub(crate) right: usize,
+  pub(crate) bottom: usize,
+  pub(crate) left: usize,
+}

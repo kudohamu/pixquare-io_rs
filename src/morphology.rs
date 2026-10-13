@@ -1,4 +1,7 @@
-use crate::composite_type::{ArgbColor, Corners, Size};
+use crate::{
+  composite_type::{ArgbColor, Corners, Size},
+  utility_type::BoundingRect,
+};
 
 pub(crate) fn outside_gradient(
   source: &[ArgbColor],
@@ -111,6 +114,39 @@ pub(crate) fn binarize(
       target[index] = ArgbColor::new(0, 0, 0, 255);
     }
   }
+}
+
+pub(crate) fn get_bounding_rect(source: &[ArgbColor], canvas_size: &Size) -> BoundingRect {
+  let mut rect = BoundingRect {
+    top: canvas_size.height as usize,
+    bottom: 0,
+    left: canvas_size.width as usize,
+    right: 0,
+  };
+
+  for x in 0..canvas_size.width as usize {
+    for y in 0..canvas_size.height as usize {
+      let index = y * canvas_size.width as usize + x;
+
+      if source[index].a != 0 {
+        if rect.right < x {
+          rect.right = x;
+        }
+        if rect.bottom < y {
+          rect.bottom = y;
+        }
+
+        if x < rect.left {
+          rect.left = x;
+        }
+        if y < rect.top {
+          rect.top = y;
+        }
+      }
+    }
+  }
+
+  rect
 }
 
 fn is_dilated_at(
