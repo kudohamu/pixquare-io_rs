@@ -875,6 +875,52 @@ pub enum Curve {
   Unknown(u16),
 }
 
+impl Curve {
+  pub fn calc(&self, t: f64) -> f64 {
+    match self {
+      Self::Linear => t,
+      Self::EaseIn => Self::cubic_bezier(t, 0.42, 0.0, 1.0, 1.0),
+      Self::EaseOut => Self::cubic_bezier(t, 0.0, 0.0, 0.58, 1.0),
+      Self::EaseInOut => Self::cubic_bezier(t, 0.42, 0.0, 0.58, 1.0),
+      Self::Bouncy => 1.0 - (-7.0 * t).exp() * (12.0 * t).cos(),
+      Self::Smooth => 1.0 - (-6.0 * t).exp() * (1.0 + 6.0 * t),
+      Self::Snappy => 1.0 - (-9.0 * t).exp() * (18.0 * t).cos(),
+      Self::Unknown(_) => t,
+    }
+  }
+
+  fn bezier_coordinate(u: f64, p1: f64, p2: f64) -> f64 {
+    let v = 1. - u;
+
+    3. * v.powf(2.) * u * p1 + 3. * v * u.powf(2.) * p2 + u.powf(3.)
+  }
+
+  fn cubic_bezier(t: f64, x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
+    let t = t.clamp(0., 1.);
+
+    if t == 0. || t == 1. {
+      return t;
+    }
+
+    let mut low = 0.;
+    let mut high = 1.;
+
+    for _ in 0..40 {
+      let u = (low + high) * 0.5;
+      let x = Self::bezier_coordinate(u, x1, x2);
+
+      if x < t {
+        low = u;
+      } else {
+        high = u;
+      }
+    }
+
+    let u = (low + high) * 0.5;
+    Self::bezier_coordinate(u, y1, y2)
+  }
+}
+
 impl From<u16> for Curve {
   fn from(value: u16) -> Self {
     match value {

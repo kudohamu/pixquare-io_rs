@@ -2106,8 +2106,6 @@ impl MagicTweenContent {
     if !self.enabled {
       return;
     }
-    let source = target.to_vec();
-    target.fill(ArgbColor::TRANSPARENT);
 
     let cycle_len = if self.auto_reverse {
       2 * (u64::from(self.frame_count) - 1)
@@ -2128,8 +2126,9 @@ impl MagicTweenContent {
       frame_step as f64 / f64::from(self.frame_count - 1)
     };
 
+    let progress = self.curve.calc(progress);
     for property in &self.properties {
-      property.apply(&source, target, canvas_size, progress);
+      property.apply(target, canvas_size, progress);
     }
   }
 
@@ -2281,15 +2280,9 @@ pub enum MagicProperty {
 }
 
 impl MagicProperty {
-  fn apply(
-    &self,
-    source: &[ArgbColor],
-    target: &mut [ArgbColor],
-    canvas_size: &Size,
-    progress: f64,
-  ) {
+  fn apply(&self, target: &mut [ArgbColor], canvas_size: &Size, progress: f64) {
     match self {
-      MagicProperty::Displacement(content) => content.apply(source, target, canvas_size, progress),
+      MagicProperty::Displacement(content) => content.apply(target, canvas_size, progress),
       _ => (),
     }
   }
@@ -2398,13 +2391,10 @@ pub struct MagicPropertyDisplacementContent {
 }
 
 impl MagicPropertyDisplacementContent {
-  fn apply(
-    &self,
-    source: &[ArgbColor],
-    target: &mut [ArgbColor],
-    canvas_size: &Size,
-    progress: f64,
-  ) {
+  fn apply(&self, target: &mut [ArgbColor], canvas_size: &Size, progress: f64) {
+    let source = target.to_vec();
+    target.fill(ArgbColor::TRANSPARENT);
+
     let offset_x = (f64::from(self.displacement.x) * progress).round() as i64;
     let offset_y = (f64::from(self.displacement.y) * progress).round() as i64;
 
