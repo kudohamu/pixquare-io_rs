@@ -7,7 +7,7 @@ use nom::{
   Parser,
   bytes::complete::take,
   combinator::map,
-  error::ErrorKind,
+  error::ErrorKind::{self},
   multi::many0,
   number::complete::{le_f32, le_f64, le_i16, le_i32, le_u8, le_u16, le_u32, le_u64},
 };
@@ -2283,6 +2283,7 @@ impl MagicProperty {
   fn apply(&self, target: &mut [ArgbColor], canvas_size: &Size, progress: f64) {
     match self {
       MagicProperty::Displacement(content) => content.apply(target, canvas_size, progress),
+      MagicProperty::Scale(content) => content.apply(target, canvas_size, progress),
       MagicProperty::Rotation(content) => content.apply(target, canvas_size, progress),
       _ => (),
     }
@@ -2442,6 +2443,67 @@ pub struct MagicPropertyScaleContent {
 }
 
 impl MagicPropertyScaleContent {
+  fn apply(&self, target: &mut [ArgbColor], canvas_size: &Size, progress: f64) {
+    let source = target.to_vec();
+    target.fill(ArgbColor::TRANSPARENT);
+
+    let bounding_rect = get_bounding_rect(&source, canvas_size);
+
+    if bounding_rect.left > bounding_rect.right || bounding_rect.top > bounding_rect.bottom {
+      return;
+    }
+
+    let source_width = bounding_rect.right - bounding_rect.left + 1;
+    let source_height = bounding_rect.bottom - bounding_rect.top + 1;
+    let top = (f64::from(bounding_rect.top as u32) + f64::from(self.top) * progress).floor();
+    let left = (f64::from(bounding_rect.left as u32) + f64::from(self.left) * progress).floor();
+    let width = (f64::from(source_width as u32) - f64::from(self.left) * progress
+      + f64::from(self.right) * progress)
+      .floor();
+    let height = (f64::from(source_height as u32) - f64::from(self.top) * progress
+      + f64::from(self.bottom) * progress)
+      .floor();
+
+    if width < 1. || height < 1. {
+      return;
+    }
+
+    for y in 0..height as usize {
+      for x in 0..width as usize {
+        let source_x = ((f64::from(x as u32) + 0.5) * f64::from(source_width as u32) / width)
+          .floor()
+          + f64::from(bounding_rect.left as u32);
+        let source_y = ((f64::from(y as u32) + 0.5) * f64::from(source_height as u32) / height)
+          .floor()
+          + f64::from(bounding_rect.top as u32);
+        let dest_x = left + f64::from(x as u32);
+        let dest_y = top + f64::from(y as u32);
+
+        if source_x < 0.
+          || source_x > f64::from(canvas_size.width - 1)
+          || source_y < 0.
+          || source_y > f64::from(canvas_size.height - 1)
+          || dest_x < 0.
+          || dest_x > f64::from(canvas_size.width - 1)
+          || dest_y < 0.
+          || dest_y > f64::from(canvas_size.height - 1)
+        {
+          continue;
+        }
+
+        copy_pixel(
+          &source,
+          target,
+          canvas_size,
+          source_x as usize,
+          source_y as usize,
+          dest_x as usize,
+          dest_y as usize,
+        );
+      }
+    }
+  }
+
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, (top, bottom, left, right)) = (le_i32, le_i32, le_i32, le_i32).parse(input)?;
 
