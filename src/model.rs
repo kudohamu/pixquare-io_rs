@@ -2366,6 +2366,11 @@ impl MagicPropertyColorAdjustmentContent {
         continue;
       }
 
+      if !self.tone.is_target(pixel) {
+        target[index] = *pixel;
+        continue;
+      }
+
       match self.color_space {
         ColorSpace::RGB => {
           let straight = pixel.to_straight_alpha().to_color();

@@ -817,6 +817,22 @@ pub enum Tone {
   Unknown(u8),
 }
 
+impl Tone {
+  pub(crate) fn is_target(&self, color: &ArgbColor) -> bool {
+    match self {
+      Self::Shadow => {
+        let hsl = color.to_hsla();
+
+        hsl.l < (1. / 3.)
+      }
+      Self::Midtone => true,
+      Self::Highlight => true,
+      Self::All => true,
+      Self::Unknown(_) => false,
+    }
+  }
+}
+
 impl From<u8> for Tone {
   fn from(value: u8) -> Self {
     match value {
