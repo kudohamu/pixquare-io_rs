@@ -2,7 +2,7 @@ use std::io::{BufReader, Read, Write};
 
 use flate2::{Compression, bufread::DeflateEncoder, read::DeflateDecoder};
 use half::f16;
-use msgw3c::{batch_blend_with_in_place, composite::PorterDuff};
+use msgw3c::{Blend, batch_blend_with_in_place, composite::PorterDuff};
 use nom::{
   Parser,
   bytes::complete::take,
@@ -2282,10 +2282,10 @@ pub enum MagicProperty {
 impl MagicProperty {
   fn apply(&self, target: &mut [ArgbColor], canvas_size: &Size, progress: f64) {
     match self {
+      MagicProperty::ColorAdjuestment(content) => content.apply(target, canvas_size, progress),
       MagicProperty::Displacement(content) => content.apply(target, canvas_size, progress),
       MagicProperty::Scale(content) => content.apply(target, canvas_size, progress),
       MagicProperty::Rotation(content) => content.apply(target, canvas_size, progress),
-      _ => (),
     }
   }
 
@@ -2346,6 +2346,38 @@ pub struct MagicPropertyColorAdjustmentContent {
 }
 
 impl MagicPropertyColorAdjustmentContent {
+  fn apply(&self, target: &mut [ArgbColor], _canvas_size: &Size, progress: f64) {
+    let source = target.to_vec();
+    target.fill(ArgbColor::TRANSPARENT);
+
+    let interpolate = |c: f32, v: f32, progress: f32| {
+      if v < 0. {
+        (c * (1. + v * progress)).clamp(0., 1.)
+      } else {
+        (c + (1. - c) * v * progress).clamp(0., 1.)
+      }
+    };
+
+    for (index, pixel) in source.iter().enumerate() {
+      if pixel.a == 0 {
+        continue;
+      }
+
+      let straight = pixel.to_straight_alpha().to_color();
+      let mut next_color = straight.clone();
+      next_color.r = interpolate(straight.r, self.first_value, progress as f32);
+      next_color.g = interpolate(straight.g, self.second_value, progress as f32);
+      next_color.b = interpolate(straight.b, self.third_value, progress as f32);
+      next_color.a = interpolate(straight.a, self.alpha_shift, progress as f32);
+
+      next_color.r *= next_color.a;
+      next_color.g *= next_color.a;
+      next_color.b *= next_color.a;
+
+      target[index] = ArgbColor::from_color(next_color);
+    }
+  }
+
   fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
     let (rest, (first_value, second_value, third_value, alpha_shift, tone, color_space)) = (
       le_f32,
