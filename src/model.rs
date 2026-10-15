@@ -2391,7 +2391,16 @@ impl MagicPropertyColorAdjustmentContent {
 
           target[index] = next_color.to_rgba();
         }
-        ColorSpace::HSL => {}
+        ColorSpace::HSL => {
+          let hsl = pixel.to_hsla();
+          let mut next_color = hsl.clone();
+          next_color.h = angle_interpolate(hsl.h, self.first_value, progress as f32);
+          next_color.s = component_interpolate(hsl.s, self.second_value, progress as f32);
+          next_color.l = component_interpolate(hsl.l, self.third_value, progress as f32);
+          next_color.a = component_interpolate(hsl.a, self.alpha_shift, progress as f32);
+
+          target[index] = next_color.to_rgba();
+        }
         ColorSpace::Unknown(_) => {}
       }
     }

@@ -641,3 +641,36 @@ impl HsvaColor {
     ArgbColor::from_color(c)
   }
 }
+
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub(crate) struct HslaColor {
+  pub(crate) h: f32,
+  pub(crate) s: f32,
+  pub(crate) l: f32,
+  pub(crate) a: f32,
+}
+
+impl HslaColor {
+  pub(crate) fn to_rgba(&self) -> ArgbColor {
+    let h_prime = (self.h % std::f32::consts::TAU) * 3. / std::f32::consts::PI;
+    let c = (1. - (2. * self.l - 1.).abs()) * self.s;
+    let x = c * (1. - (h_prime % 2. - 1.).abs());
+    let m = self.l - c / 2.;
+
+    let color = if 0. <= h_prime && h_prime < 1. {
+      C::from_straight_alpha(c + m, x + m, m, self.a)
+    } else if 1. <= h_prime && h_prime < 2. {
+      C::from_straight_alpha(x + m, c + m, m, self.a)
+    } else if 2. <= h_prime && h_prime < 3. {
+      C::from_straight_alpha(m, c + m, x + m, self.a)
+    } else if 3. <= h_prime && h_prime < 4. {
+      C::from_straight_alpha(m, x + m, c + m, self.a)
+    } else if 4. <= h_prime && h_prime < 5. {
+      C::from_straight_alpha(x + m, m, c + m, self.a)
+    } else {
+      C::from_straight_alpha(c + m, m, x + m, self.a)
+    };
+
+    ArgbColor::from_color(color)
+  }
+}

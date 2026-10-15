@@ -6,7 +6,7 @@ use crate::{
   error::{PMResult, ParseError},
   marshaler::Marshal,
   primitive_type::OptionSet,
-  utility_type::HsvaColor,
+  utility_type::{HslaColor, HsvaColor},
 };
 
 /// <https://docs.pixquare.art/pixquare-file/binary-specs#coordinate>
@@ -163,6 +163,39 @@ impl ArgbColor {
       h,
       s,
       v,
+      a: straight.a,
+    }
+  }
+
+  pub(crate) fn to_hsla(&self) -> HslaColor {
+    let straight = self.to_straight_alpha().to_color();
+
+    let c_max = straight.r.max(straight.g).max(straight.b);
+    let c_min = straight.r.min(straight.g).min(straight.b);
+    let delta = c_max - c_min;
+
+    let l = (c_max + c_min) / 2.;
+    let s = if delta == 0. {
+      0.
+    } else if l <= 0.5 {
+      delta / (2. * l)
+    } else {
+      delta / (2. - 2. * l)
+    };
+    let h = if delta == 0. {
+      0.
+    } else if c_max == straight.r {
+      ((straight.g - straight.b) / delta % 6.) * std::f32::consts::PI / 3.
+    } else if c_max == straight.g {
+      ((straight.b - straight.r) / delta + 2.) * std::f32::consts::PI / 3.
+    } else {
+      ((straight.r - straight.g) / delta + 4.) * std::f32::consts::PI / 3.
+    };
+
+    HslaColor {
+      h,
+      s,
+      l,
       a: straight.a,
     }
   }
