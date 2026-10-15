@@ -2350,7 +2350,10 @@ impl MagicPropertyColorAdjustmentContent {
     let source = target.to_vec();
     target.fill(ArgbColor::TRANSPARENT);
 
-    let interpolate = |c: f32, v: f32, progress: f32| {
+    let angle_interpolate = |angle: f32, v: f32, progress: f32| {
+      (angle + v * std::f32::consts::TAU * progress as f32).rem_euclid(std::f32::consts::TAU)
+    };
+    let component_interpolate = |c: f32, v: f32, progress: f32| {
       if v < 0. {
         (c * (1. + v * progress)).clamp(0., 1.)
       } else {
@@ -2363,18 +2366,34 @@ impl MagicPropertyColorAdjustmentContent {
         continue;
       }
 
-      let straight = pixel.to_straight_alpha().to_color();
-      let mut next_color = straight.clone();
-      next_color.r = interpolate(straight.r, self.first_value, progress as f32);
-      next_color.g = interpolate(straight.g, self.second_value, progress as f32);
-      next_color.b = interpolate(straight.b, self.third_value, progress as f32);
-      next_color.a = interpolate(straight.a, self.alpha_shift, progress as f32);
+      match self.color_space {
+        ColorSpace::RGB => {
+          let straight = pixel.to_straight_alpha().to_color();
+          let mut next_color = straight.clone();
+          next_color.r = component_interpolate(straight.r, self.first_value, progress as f32);
+          next_color.g = component_interpolate(straight.g, self.second_value, progress as f32);
+          next_color.b = component_interpolate(straight.b, self.third_value, progress as f32);
+          next_color.a = component_interpolate(straight.a, self.alpha_shift, progress as f32);
 
-      next_color.r *= next_color.a;
-      next_color.g *= next_color.a;
-      next_color.b *= next_color.a;
+          next_color.r *= next_color.a;
+          next_color.g *= next_color.a;
+          next_color.b *= next_color.a;
 
-      target[index] = ArgbColor::from_color(next_color);
+          target[index] = ArgbColor::from_color(next_color);
+        }
+        ColorSpace::HSV => {
+          let hsv = pixel.to_hsva();
+          let mut next_color = hsv.clone();
+          next_color.h = angle_interpolate(hsv.h, self.first_value, progress as f32);
+          next_color.s = component_interpolate(hsv.s, self.second_value, progress as f32);
+          next_color.v = component_interpolate(hsv.v, self.third_value, progress as f32);
+          next_color.a = component_interpolate(hsv.a, self.alpha_shift, progress as f32);
+
+          target[index] = next_color.to_rgba();
+        }
+        ColorSpace::HSL => {}
+        ColorSpace::Unknown(_) => {}
+      }
     }
   }
 

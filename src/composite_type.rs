@@ -6,6 +6,7 @@ use crate::{
   error::{PMResult, ParseError},
   marshaler::Marshal,
   primitive_type::OptionSet,
+  utility_type::HsvaColor,
 };
 
 /// <https://docs.pixquare.art/pixquare-file/binary-specs#coordinate>
@@ -136,6 +137,34 @@ impl ArgbColor {
     self.g = (self.g as f32 * alpha).round().clamp(0.0, 255.0) as u8;
     self.b = (self.b as f32 * alpha).round().clamp(0.0, 255.0) as u8;
     self.a = (self.a as f32 * alpha).round().clamp(0.0, 255.0) as u8;
+  }
+
+  pub(crate) fn to_hsva(&self) -> HsvaColor {
+    let straight = self.to_straight_alpha().to_color();
+
+    let c_max = straight.r.max(straight.g).max(straight.b);
+    let c_min = straight.r.min(straight.g).min(straight.b);
+    let delta = c_max - c_min;
+
+    let h = if straight.r == straight.g && straight.g == straight.b {
+      0.
+    } else if c_max == straight.r {
+      (straight.g - straight.b) / delta * std::f32::consts::PI / 3.
+    } else if c_max == straight.g {
+      ((straight.b - straight.r) / delta + 2.) * std::f32::consts::PI / 3.
+    } else {
+      ((straight.r - straight.g) / delta + 4.) * std::f32::consts::PI / 3.
+    };
+
+    let s = if c_max == 0. { 0. } else { delta / c_max };
+    let v = c_max;
+
+    HsvaColor {
+      h,
+      s,
+      v,
+      a: straight.a,
+    }
   }
 }
 

@@ -1,5 +1,7 @@
 use half::f16;
-use msgw3c::{batch_blend_with_in_place, batch_normal_in_place, composite::PorterDuff};
+use msgw3c::{
+  Blend, batch_blend_with_in_place, batch_normal_in_place, color::C, composite::PorterDuff,
+};
 
 use crate::{
   composite_type::{ArgbColor, BlendMode, EntryType, Size},
@@ -607,4 +609,35 @@ pub(crate) struct BoundingRect {
   pub(crate) right: usize,
   pub(crate) bottom: usize,
   pub(crate) left: usize,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub(crate) struct HsvaColor {
+  pub(crate) h: f32,
+  pub(crate) s: f32,
+  pub(crate) v: f32,
+  pub(crate) a: f32,
+}
+
+impl HsvaColor {
+  pub(crate) fn to_rgba(&self) -> ArgbColor {
+    let h_prime = self.h.rem_euclid(std::f32::consts::TAU) * 3. / std::f32::consts::PI;
+    let i = h_prime.floor() as u8 % 6;
+    let f = h_prime.fract();
+
+    let p = self.v * (1. - self.s);
+    let q = self.v * (1. - f * self.s);
+    let t = self.v * (1. - (1. - f) * self.s);
+
+    let c = match i {
+      0 => C::from_straight_alpha(self.v, t, p, self.a),
+      1 => C::from_straight_alpha(q, self.v, p, self.a),
+      2 => C::from_straight_alpha(p, self.v, t, self.a),
+      3 => C::from_straight_alpha(p, q, self.v, self.a),
+      4 => C::from_straight_alpha(t, p, self.v, self.a),
+      _ => C::from_straight_alpha(self.v, p, q, self.a),
+    };
+
+    ArgbColor::from_color(c)
+  }
 }
