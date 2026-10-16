@@ -819,14 +819,12 @@ pub enum Tone {
 
 impl Tone {
   pub(crate) fn is_target(&self, color: &ArgbColor) -> bool {
-    match self {
-      Self::Shadow => {
-        let hsl = color.to_hsla();
+    let hsl = color.to_hsla();
 
-        hsl.l < (1. / 3.)
-      }
-      Self::Midtone => true,
-      Self::Highlight => true,
+    match self {
+      Self::Shadow => hsl.l < (1. / 3.),
+      Self::Midtone => (1. / 3.) <= hsl.l && hsl.l < (2. / 3.),
+      Self::Highlight => (2. / 3.) <= hsl.l,
       Self::All => true,
       Self::Unknown(_) => false,
     }
