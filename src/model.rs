@@ -6762,7 +6762,7 @@ mod tests {
     assert_eq!(scaling.left, -6);
     assert_eq!(scaling.right, 5);
     assert_eq!(tween1.frame_count, 7);
-    assert_eq!(tween1.auto_reverse, true);
+    assert!(tween1.auto_reverse);
     assert_eq!(tween1.loop_count, 0);
     assert!(artwork.magic_layers[0].remaining_data.is_empty());
     // Magic Layer 2
@@ -6792,7 +6792,7 @@ mod tests {
     assert_eq!(displacement.displacement.x, 5);
     assert_eq!(displacement.displacement.y, -4);
     assert_eq!(tween1.frame_count, 12);
-    assert_eq!(tween1.auto_reverse, false);
+    assert!(!tween1.auto_reverse);
     assert_eq!(tween1.loop_count, 3);
     assert!(artwork.magic_layers[1].remaining_data.is_empty());
   }
