@@ -10,7 +10,7 @@ A Crate for reading/writing [Pixquare](https://www.pixquare.art/) files.
 ```toml
 # Cargo.toml
 [dependencies]
-pixquare-io = "0.1.0"
+pixquare-io = "0.2.0"
 ```
 
 ## Reading from a file
@@ -58,4 +58,5 @@ let image_buf = artwork.get_frame_image(frame_index, LayerVisibility::Visible)?;
 
 | Pixquare version | `pixquare-io` version |
 | :-- | :-- |
-| ~2.72.0 | 0.1.0 |
+| 2.73.0 | 0.2.0 |
+| -2.72.0 | 0.1.0 |
