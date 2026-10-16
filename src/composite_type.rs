@@ -837,7 +837,7 @@ impl From<u8> for Tone {
       0 => Self::Shadow,
       1 => Self::Midtone,
       2 => Self::Highlight,
-      4 => Self::All,
+      3 => Self::All,
       _ => Self::Unknown(value),
     }
   }
@@ -849,7 +849,7 @@ impl From<Tone> for u8 {
       Tone::Shadow => 0,
       Tone::Midtone => 1,
       Tone::Highlight => 2,
-      Tone::All => 4,
+      Tone::All => 3,
       Tone::Unknown(v) => v,
     }
   }
