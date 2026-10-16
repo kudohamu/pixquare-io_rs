@@ -2273,7 +2273,7 @@ impl Marshal for MagicWaveContent {
 /// <https://docs.pixquare.art/pixquare-file/binary-specs#magic>
 #[derive(Debug, Clone, Copy)]
 pub enum MagicProperty {
-  ColorAdjuestment(MagicPropertyColorAdjustmentContent),
+  ColorAdjustment(MagicPropertyColorAdjustmentContent),
   Displacement(MagicPropertyDisplacementContent),
   Scale(MagicPropertyScaleContent),
   Rotation(MagicPropertyRotationContent),
@@ -2282,7 +2282,7 @@ pub enum MagicProperty {
 impl MagicProperty {
   fn apply(&self, target: &mut [ArgbColor], canvas_size: &Size, progress: f64) {
     match self {
-      MagicProperty::ColorAdjuestment(content) => content.apply(target, canvas_size, progress),
+      MagicProperty::ColorAdjustment(content) => content.apply(target, canvas_size, progress),
       MagicProperty::Displacement(content) => content.apply(target, canvas_size, progress),
       MagicProperty::Scale(content) => content.apply(target, canvas_size, progress),
       MagicProperty::Rotation(content) => content.apply(target, canvas_size, progress),
@@ -2296,7 +2296,7 @@ impl MagicProperty {
       0 => {
         let (input, content) = MagicPropertyColorAdjustmentContent::parse(input)?;
 
-        Ok((input, Self::ColorAdjuestment(content)))
+        Ok((input, Self::ColorAdjustment(content)))
       }
       1 => {
         let (input, content) = MagicPropertyDisplacementContent::parse(input)?;
@@ -2321,7 +2321,7 @@ impl MagicProperty {
 impl Marshal for MagicProperty {
   fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
     match self {
-      Self::ColorAdjuestment(content) => content.marshal(w)?,
+      Self::ColorAdjustment(content) => content.marshal(w)?,
       Self::Displacement(content) => content.marshal(w)?,
       Self::Scale(content) => content.marshal(w)?,
       Self::Rotation(content) => content.marshal(w)?,
@@ -6747,8 +6747,8 @@ mod tests {
     assert!(tween1.enabled);
     assert_eq!(tween1.curve, Curve::EaseIn);
     assert_eq!(tween1.properties.len(), 2);
-    let MagicProperty::ColorAdjuestment(color_adjuestment) = &tween1.properties[0] else {
-      panic!("expected MagicProperty::ColorAdjuestment");
+    let MagicProperty::ColorAdjustment(color_adjuestment) = &tween1.properties[0] else {
+      panic!("expected MagicProperty::ColorAdjustment");
     };
     assert_eq!(color_adjuestment.first_value, 0.);
     assert_eq!(color_adjuestment.second_value, 0.25);
