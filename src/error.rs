@@ -23,6 +23,10 @@ pub enum ParseError<I> {
   InvalidGuideLineType,
   /// Unknown value of Processor Type.
   InvalidProcessorType,
+  /// Unknown value of Magic Type.
+  InvalidMagicType,
+  /// Unknown value of Property Type of magic.
+  InvalidMagicPropertyType,
   /// Unknown value of Modifier Type.
   InvalidModifierType,
   /// Unknown value of PaletteOrganization Type.
@@ -52,6 +56,8 @@ impl<I> Display for ParseError<I> {
       Self::InvalidEntryType => write!(f, "unknown value of Entry Type"),
       Self::InvalidGuideLineType => write!(f, "unknown value of GuideLine Type"),
       Self::InvalidProcessorType => write!(f, "unknown value of Processor Type"),
+      Self::InvalidMagicType => write!(f, "unknown value of Magic Type"),
+      Self::InvalidMagicPropertyType => write!(f, "unknown value of Magic Property Type"),
       Self::InvalidModifierType => write!(f, "unknown value of Modifier Type"),
       Self::InvalidPaletteOrganizationType => {
         write!(f, "unknown value of PaletteOrganization Type")

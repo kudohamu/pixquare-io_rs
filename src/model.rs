@@ -2,30 +2,30 @@ use std::io::{BufReader, Read, Write};
 
 use flate2::{Compression, bufread::DeflateEncoder, read::DeflateDecoder};
 use half::f16;
-use msgw3c::{batch_blend_with_in_place, composite::PorterDuff};
+use msgw3c::{Blend, batch_blend_with_in_place, composite::PorterDuff};
 use nom::{
   Parser,
   bytes::complete::take,
   combinator::map,
-  error::ErrorKind,
+  error::ErrorKind::{self},
   multi::many0,
-  number::complete::{le_f32, le_f64, le_i16, le_u8, le_u16, le_u32, le_u64},
+  number::complete::{le_f32, le_f64, le_i16, le_i32, le_u8, le_u16, le_u32, le_u64},
 };
 
 use crate::{
   combinator::{
-    argb_color, array_type, blend_mode, bool, compressed_color_bytes, corners, dumb_string,
-    float16, option_set_u8, rect, size, string, type_n,
+    argb_color, array_type, blend_mode, bool, compressed_color_bytes, coordinate, corners,
+    dumb_string, float16, option_set_u8, rect, size, string, type_n,
   },
   composite_type::{
-    AnimationDirection, ArgbColor, BlendMode, ColorDepth, Corners, CustomDataType, EntryType,
-    FlipAxes, FxType, GuideLineType, ModifierType, PaletteOrganizationType, ProcessorType, Rect,
-    Size, SymmetryType,
+    AnimationDirection, ArgbColor, Axis, BlendMode, ColorDepth, ColorSpace, Coordinate, Corners,
+    Curve, CustomDataType, EntryType, FlipAxes, FxType, GuideLineType, ModifierType,
+    PaletteOrganizationType, ProcessorType, Rect, Size, SymmetryType, Tone,
   },
+  effect::{copy_pixel, move_pixel_from_index, smoothstep, wrapping_move_pixels_from_index},
   error::{ArtworkOperationError, MarshalError, PMResult, PPResult, ParseError},
-  interpolation::smoothstep,
   marshaler::Marshal,
-  morphology::{hit_or_miss, inside_gradient, outside_gradient},
+  morphology::{get_bounding_rect, hit_or_miss, inside_gradient, outside_gradient},
   primitive_type::{DumbString, OptionSet, TypeN},
   processing::{
     adjust_intensity, adjust_threshold, apply_gaussian_blur, create_bloom_difference,
@@ -1811,6 +1811,864 @@ impl Marshal for Fx {
   }
 }
 
+/// The core model of [`MagicLayer`].
+///
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#magic>
+#[derive(Debug, Clone)]
+pub enum Magic {
+  Parallax(MagicParallaxContent),
+  Skewing(MagicSkewingContent),
+  Tween(MagicTweenContent),
+  Wave(MagicWaveContent),
+}
+
+impl Magic {
+  pub(crate) fn apply(&self, target: &mut [ArgbColor], canvas_size: &Size, frame_index: usize) {
+    match self {
+      Magic::Parallax(content) => content.apply(target, canvas_size, frame_index),
+      Magic::Skewing(content) => content.apply(target, canvas_size, frame_index),
+      Magic::Tween(content) => content.apply(target, canvas_size, frame_index),
+      Magic::Wave(content) => content.apply(target, canvas_size, frame_index),
+    }
+  }
+
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
+    let (input, property_type) = le_u16(input)?;
+
+    match property_type {
+      0 => {
+        let (input, content) = MagicParallaxContent::parse(input)?;
+
+        Ok((input, Self::Parallax(content)))
+      }
+      1 => {
+        let (input, content) = MagicSkewingContent::parse(input)?;
+
+        Ok((input, Self::Skewing(content)))
+      }
+      2 => {
+        let (input, content) = MagicTweenContent::parse(input)?;
+
+        Ok((input, Self::Tween(content)))
+      }
+      3 => {
+        let (input, content) = MagicWaveContent::parse(input)?;
+
+        Ok((input, Self::Wave(content)))
+      }
+      _ => Err(nom::Err::Error(ParseError::InvalidMagicType)),
+    }
+  }
+}
+
+impl Marshal for Magic {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    match self {
+      Self::Parallax(content) => content.marshal(w)?,
+      Self::Skewing(content) => content.marshal(w)?,
+      Self::Tween(content) => content.marshal(w)?,
+      Self::Wave(content) => content.marshal(w)?,
+    }
+
+    Ok(())
+  }
+}
+
+/// Content data of parallax for magic.
+#[derive(Debug, Clone)]
+pub struct MagicParallaxContent {
+  pub id: String,
+  pub enabled: bool,
+  pub x: i32,
+  pub y: i32,
+  /// Always 0 for now.
+  pub _unused: u8,
+}
+
+impl MagicParallaxContent {
+  fn apply(&self, target: &mut [ArgbColor], canvas_size: &Size, frame_index: usize) {
+    if !self.enabled {
+      return;
+    }
+    let source = target.to_vec();
+    target.fill(ArgbColor::TRANSPARENT);
+    let offset_x = self.x as i64 * frame_index as i64;
+    let offset_y = self.y as i64 * frame_index as i64;
+
+    wrapping_move_pixels_from_index(&source, target, canvas_size, offset_x, offset_y);
+  }
+
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
+    let (rest, (id, enabled, x, y, _unused)) =
+      (string, bool, le_i32, le_i32, le_u8).parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        id,
+        enabled,
+        x,
+        y,
+        _unused,
+      },
+    ))
+  }
+}
+
+impl Marshal for MagicParallaxContent {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let magic_type: u16 = 0;
+    magic_type.marshal(w)?;
+    let _ = self.id.marshal(w)?;
+    self.enabled.marshal(w)?;
+    self.x.marshal(w)?;
+    self.y.marshal(w)?;
+    self._unused.marshal(w)?;
+
+    Ok(())
+  }
+}
+
+/// Content data of skewing for magic.
+#[derive(Debug, Clone)]
+pub struct MagicSkewingContent {
+  pub id: String,
+  pub enabled: bool,
+  pub axis: Axis,
+  pub step: i32,
+  pub size: u32,
+  pub count: u32,
+}
+
+impl MagicSkewingContent {
+  fn apply(&self, target: &mut [ArgbColor], canvas_size: &Size, frame_index: usize) {
+    if !self.enabled {
+      return;
+    }
+    let source = target.to_vec();
+    target.fill(ArgbColor::TRANSPARENT);
+
+    match self.axis {
+      Axis::Vertical => {
+        let Some(base_x) = self.find_first_pixel_index(&source, canvas_size) else {
+          return;
+        };
+
+        for x in (base_x)..canvas_size.width {
+          let band = i64::from(x - base_x) / i64::from(self.size) - frame_index as i64;
+          let peak = i64::from(self.count);
+
+          let level = if peak == 0 {
+            0
+          } else {
+            let period = peak * 2;
+            let phase = band.rem_euclid(period);
+            phase.min(period - phase)
+          };
+
+          let offset = level * self.step as i64;
+          for y in 0..canvas_size.height {
+            let source_index = y * canvas_size.width + x;
+
+            move_pixel_from_index(
+              &source,
+              target,
+              source_index as usize,
+              canvas_size,
+              0,
+              offset,
+            );
+          }
+        }
+      }
+      Axis::Horizontal => {
+        let Some(base_y) = self.find_first_pixel_index(&source, canvas_size) else {
+          return;
+        };
+
+        for y in (base_y)..canvas_size.height {
+          let band = i64::from(y - base_y) / i64::from(self.size) - frame_index as i64;
+          let peak = i64::from(self.count);
+
+          let level = if peak == 0 {
+            0
+          } else {
+            let period = peak * 2;
+            let phase = band.rem_euclid(period);
+            phase.min(period - phase)
+          };
+
+          let offset = level * self.step as i64;
+          for x in 0..canvas_size.width {
+            let source_index = y * canvas_size.width + x;
+
+            move_pixel_from_index(
+              &source,
+              target,
+              source_index as usize,
+              canvas_size,
+              offset,
+              0,
+            );
+          }
+        }
+      }
+      Axis::Unknown(_) => (),
+    }
+  }
+
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
+    let (rest, (id, enabled, axis, step, size, count)) = (
+      string,
+      bool,
+      map(le_u8, |v| v.into()),
+      le_i32,
+      le_u32,
+      le_u32,
+    )
+      .parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        id,
+        enabled,
+        axis,
+        step,
+        size,
+        count,
+      },
+    ))
+  }
+
+  fn find_first_pixel_index(&self, source: &[ArgbColor], canvas_size: &Size) -> Option<u32> {
+    match self.axis {
+      Axis::Vertical => {
+        for x in 0..canvas_size.width {
+          for y in 0..canvas_size.height {
+            let index = y * canvas_size.width + x;
+
+            if source[index as usize].a != 0 {
+              return Some(x);
+            }
+          }
+        }
+
+        None
+      }
+      Axis::Horizontal => {
+        for y in 0..canvas_size.height {
+          for x in 0..canvas_size.width {
+            let index = y * canvas_size.width + x;
+
+            if source[index as usize].a != 0 {
+              return Some(y);
+            }
+          }
+        }
+
+        None
+      }
+      Axis::Unknown(_) => None,
+    }
+  }
+}
+
+impl Marshal for MagicSkewingContent {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let magic_type: u16 = 1;
+    magic_type.marshal(w)?;
+    let _ = self.id.marshal(w)?;
+    self.enabled.marshal(w)?;
+    self.axis.marshal(w)?;
+    self.step.marshal(w)?;
+    self.size.marshal(w)?;
+    self.count.marshal(w)?;
+
+    Ok(())
+  }
+}
+
+/// Content data of tween for magic.
+#[derive(Debug, Clone)]
+pub struct MagicTweenContent {
+  pub id: String,
+  pub enabled: bool,
+  pub curve: Curve,
+  pub properties: Vec<MagicProperty>,
+  pub frame_count: u32,
+  pub auto_reverse: bool,
+  pub loop_count: u32,
+}
+
+impl MagicTweenContent {
+  fn apply(&self, target: &mut [ArgbColor], canvas_size: &Size, frame_index: usize) {
+    if !self.enabled {
+      return;
+    }
+
+    let cycle_len = if self.auto_reverse {
+      2 * (u64::from(self.frame_count) - 1)
+    } else {
+      u64::from(self.frame_count)
+    };
+    let loop_count = frame_index as u64 / cycle_len;
+    let frame_step = frame_index as u64 % cycle_len;
+    let progress = if self.loop_count != 0 && loop_count >= u64::from(self.loop_count) {
+      if self.auto_reverse { 0. } else { 1. }
+    } else if self.auto_reverse {
+      if frame_step > u64::from(self.frame_count - 1) {
+        (2 * u64::from(self.frame_count - 1) - frame_step) as f64 / f64::from(self.frame_count - 1)
+      } else {
+        frame_step as f64 / f64::from(self.frame_count - 1)
+      }
+    } else {
+      frame_step as f64 / f64::from(self.frame_count - 1)
+    };
+
+    let progress = self.curve.calc(progress);
+    for property in &self.properties {
+      property.apply(target, canvas_size, progress);
+    }
+  }
+
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
+    let (rest, (id, enabled, curve, properties, frame_count, auto_reverse, loop_count)) = (
+      string,
+      bool,
+      map(le_u16, |v| v.into()),
+      array_type(MagicProperty::parse),
+      le_u32,
+      bool,
+      le_u32,
+    )
+      .parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        id,
+        enabled,
+        curve,
+        properties,
+        frame_count,
+        auto_reverse,
+        loop_count,
+      },
+    ))
+  }
+}
+
+impl Marshal for MagicTweenContent {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let magic_type: u16 = 2;
+    magic_type.marshal(w)?;
+    let _ = self.id.marshal(w)?;
+    self.enabled.marshal(w)?;
+    self.curve.marshal(w)?;
+    self.properties.marshal(w)?;
+    self.frame_count.marshal(w)?;
+    self.auto_reverse.marshal(w)?;
+    self.loop_count.marshal(w)?;
+
+    Ok(())
+  }
+}
+
+/// Content data of wave for magic.
+#[derive(Debug, Clone)]
+pub struct MagicWaveContent {
+  pub id: String,
+  pub enabled: bool,
+  pub size: u32,
+  pub step: u32,
+  pub angle: f32,
+  pub frame_count: u32,
+}
+
+impl MagicWaveContent {
+  fn apply(&self, target: &mut [ArgbColor], canvas_size: &Size, frame_index: usize) {
+    if !self.enabled {
+      return;
+    }
+    let source = target.to_vec();
+    target.fill(ArgbColor::TRANSPARENT);
+
+    let vec_x = f64::from(self.angle).cos();
+    let vec_y = f64::from(self.angle).sin();
+    let start_phase = 0.;
+    let frame_phase =
+      std::f64::consts::TAU * f64::from(frame_index as u32) / f64::from(self.frame_count);
+
+    let d = |phase: f64| {
+      let a = 0.75;
+      let b = 0.25;
+      let delta = -std::f64::consts::PI / 12.;
+
+      a * phase.sin() + b * (2. * phase + delta).cos()
+    };
+
+    for x in 0..canvas_size.width {
+      for y in 0..canvas_size.height {
+        let u = f64::from(x) * vec_x + f64::from(y) * vec_y;
+        let pos_phase = std::f64::consts::TAU * u / f64::from(self.size);
+        let phase = pos_phase - frame_phase + start_phase;
+        let displacement = d(phase);
+
+        let source_x = f64::from(x) + f64::from(self.step) * displacement * vec_x;
+        let source_y = f64::from(y) + f64::from(self.step) * displacement * vec_y;
+
+        let normalized_source_x =
+          (source_x.round() as usize).clamp(0, (canvas_size.width - 1) as usize);
+        let normalized_source_y =
+          (source_y.round() as usize).clamp(0, (canvas_size.height - 1) as usize);
+        copy_pixel(
+          &source,
+          target,
+          canvas_size,
+          normalized_source_x,
+          normalized_source_y,
+          x as usize,
+          y as usize,
+        );
+      }
+    }
+  }
+
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
+    let (rest, (id, enabled, size, step, angle, frame_count)) =
+      (string, bool, le_u32, le_u32, le_f32, le_u32).parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        id,
+        enabled,
+        size,
+        step,
+        angle,
+        frame_count,
+      },
+    ))
+  }
+}
+
+impl Marshal for MagicWaveContent {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let magic_type: u16 = 3;
+    magic_type.marshal(w)?;
+    let _ = self.id.marshal(w)?;
+    self.enabled.marshal(w)?;
+    self.size.marshal(w)?;
+    self.step.marshal(w)?;
+    self.angle.marshal(w)?;
+    self.frame_count.marshal(w)?;
+
+    Ok(())
+  }
+}
+
+/// Property data of Magic.
+///
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#magic>
+#[derive(Debug, Clone, Copy)]
+pub enum MagicProperty {
+  ColorAdjustment(MagicPropertyColorAdjustmentContent),
+  Displacement(MagicPropertyDisplacementContent),
+  Scale(MagicPropertyScaleContent),
+  Rotation(MagicPropertyRotationContent),
+}
+
+impl MagicProperty {
+  fn apply(&self, target: &mut [ArgbColor], canvas_size: &Size, progress: f64) {
+    match self {
+      MagicProperty::ColorAdjustment(content) => content.apply(target, canvas_size, progress),
+      MagicProperty::Displacement(content) => content.apply(target, canvas_size, progress),
+      MagicProperty::Scale(content) => content.apply(target, canvas_size, progress),
+      MagicProperty::Rotation(content) => content.apply(target, canvas_size, progress),
+    }
+  }
+
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
+    let (input, property_type) = le_u16(input)?;
+
+    match property_type {
+      0 => {
+        let (input, content) = MagicPropertyColorAdjustmentContent::parse(input)?;
+
+        Ok((input, Self::ColorAdjustment(content)))
+      }
+      1 => {
+        let (input, content) = MagicPropertyDisplacementContent::parse(input)?;
+
+        Ok((input, Self::Displacement(content)))
+      }
+      2 => {
+        let (input, content) = MagicPropertyScaleContent::parse(input)?;
+
+        Ok((input, Self::Scale(content)))
+      }
+      3 => {
+        let (input, content) = MagicPropertyRotationContent::parse(input)?;
+
+        Ok((input, Self::Rotation(content)))
+      }
+      _ => Err(nom::Err::Error(ParseError::InvalidMagicPropertyType)),
+    }
+  }
+}
+
+impl Marshal for MagicProperty {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    match self {
+      Self::ColorAdjustment(content) => content.marshal(w)?,
+      Self::Displacement(content) => content.marshal(w)?,
+      Self::Scale(content) => content.marshal(w)?,
+      Self::Rotation(content) => content.marshal(w)?,
+    }
+
+    Ok(())
+  }
+}
+
+/// Content data of color adjustment for magic property.
+#[derive(Debug, Clone, Copy)]
+pub struct MagicPropertyColorAdjustmentContent {
+  /// Hue or Red.
+  pub first_value: f32,
+  /// Saturation or Green.
+  pub second_value: f32,
+  /// Value, Lightness, or Blue.
+  pub third_value: f32,
+  pub alpha_shift: f32,
+  pub tone: Tone,
+  pub color_space: ColorSpace,
+}
+
+impl MagicPropertyColorAdjustmentContent {
+  fn apply(&self, target: &mut [ArgbColor], _canvas_size: &Size, progress: f64) {
+    let source = target.to_vec();
+    target.fill(ArgbColor::TRANSPARENT);
+
+    let angle_interpolate = |angle: f32, v: f32, progress: f32| {
+      (angle + v * std::f32::consts::TAU * progress).rem_euclid(std::f32::consts::TAU)
+    };
+    let component_interpolate = |c: f32, v: f32, progress: f32| {
+      if v < 0. {
+        (c * (1. + v * progress)).clamp(0., 1.)
+      } else {
+        (c + (1. - c) * v * progress).clamp(0., 1.)
+      }
+    };
+
+    for (index, pixel) in source.iter().enumerate() {
+      if pixel.a == 0 {
+        continue;
+      }
+
+      if !self.tone.is_target(pixel) {
+        target[index] = *pixel;
+        continue;
+      }
+
+      match self.color_space {
+        ColorSpace::RGB => {
+          let straight = pixel.to_straight_alpha().to_color();
+          let mut next_color = straight;
+          next_color.r = component_interpolate(straight.r, self.first_value, progress as f32);
+          next_color.g = component_interpolate(straight.g, self.second_value, progress as f32);
+          next_color.b = component_interpolate(straight.b, self.third_value, progress as f32);
+          next_color.a = component_interpolate(straight.a, self.alpha_shift, progress as f32);
+
+          next_color.r *= next_color.a;
+          next_color.g *= next_color.a;
+          next_color.b *= next_color.a;
+
+          target[index] = ArgbColor::from_color(next_color);
+        }
+        ColorSpace::HSV => {
+          let hsv = pixel.to_hsva();
+          let mut next_color = hsv;
+          next_color.h = angle_interpolate(hsv.h, self.first_value, progress as f32);
+          next_color.s = component_interpolate(hsv.s, self.second_value, progress as f32);
+          next_color.v = component_interpolate(hsv.v, self.third_value, progress as f32);
+          next_color.a = component_interpolate(hsv.a, self.alpha_shift, progress as f32);
+
+          target[index] = next_color.to_rgba();
+        }
+        ColorSpace::HSL => {
+          let hsl = pixel.to_hsla();
+          let mut next_color = hsl;
+          next_color.h = angle_interpolate(hsl.h, self.first_value, progress as f32);
+          next_color.s = component_interpolate(hsl.s, self.second_value, progress as f32);
+          next_color.l = component_interpolate(hsl.l, self.third_value, progress as f32);
+          next_color.a = component_interpolate(hsl.a, self.alpha_shift, progress as f32);
+
+          target[index] = next_color.to_rgba();
+        }
+        ColorSpace::Unknown(_) => {}
+      }
+    }
+  }
+
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
+    let (rest, (first_value, second_value, third_value, alpha_shift, tone, color_space)) = (
+      le_f32,
+      le_f32,
+      le_f32,
+      le_f32,
+      map(le_u8, |v| v.into()),
+      map(le_u8, |v| v.into()),
+    )
+      .parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        first_value,
+        second_value,
+        third_value,
+        alpha_shift,
+        tone,
+        color_space,
+      },
+    ))
+  }
+}
+
+impl Marshal for MagicPropertyColorAdjustmentContent {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let magic_type: u16 = 0;
+    magic_type.marshal(w)?;
+    self.first_value.marshal(w)?;
+    self.second_value.marshal(w)?;
+    self.third_value.marshal(w)?;
+    self.alpha_shift.marshal(w)?;
+    self.tone.marshal(w)?;
+    self.color_space.marshal(w)?;
+
+    Ok(())
+  }
+}
+
+/// Content data of displacement for magic property.
+#[derive(Debug, Clone, Copy)]
+pub struct MagicPropertyDisplacementContent {
+  pub displacement: Coordinate,
+}
+
+impl MagicPropertyDisplacementContent {
+  fn apply(&self, target: &mut [ArgbColor], canvas_size: &Size, progress: f64) {
+    let source = target.to_vec();
+    target.fill(ArgbColor::TRANSPARENT);
+
+    let offset_x = (f64::from(self.displacement.x) * progress).round() as i64;
+    let offset_y = (f64::from(self.displacement.y) * progress).round() as i64;
+
+    for x in 0..canvas_size.width {
+      for y in 0..canvas_size.height {
+        let source_index = y * canvas_size.width + x;
+
+        move_pixel_from_index(
+          &source,
+          target,
+          source_index as usize,
+          canvas_size,
+          offset_x,
+          offset_y,
+        );
+      }
+    }
+  }
+
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
+    let (rest, displacement) = coordinate(input)?;
+
+    Ok((rest, Self { displacement }))
+  }
+}
+
+impl Marshal for MagicPropertyDisplacementContent {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let magic_type: u16 = 1;
+    magic_type.marshal(w)?;
+    self.displacement.marshal(w)?;
+
+    Ok(())
+  }
+}
+
+/// Content data of scale for magic property.
+#[derive(Debug, Clone, Copy)]
+pub struct MagicPropertyScaleContent {
+  pub top: i32,
+  pub bottom: i32,
+  pub left: i32,
+  pub right: i32,
+}
+
+impl MagicPropertyScaleContent {
+  fn apply(&self, target: &mut [ArgbColor], canvas_size: &Size, progress: f64) {
+    let source = target.to_vec();
+    target.fill(ArgbColor::TRANSPARENT);
+
+    let bounding_rect = get_bounding_rect(&source, canvas_size);
+
+    if bounding_rect.left > bounding_rect.right || bounding_rect.top > bounding_rect.bottom {
+      return;
+    }
+
+    let source_width = bounding_rect.right - bounding_rect.left + 1;
+    let source_height = bounding_rect.bottom - bounding_rect.top + 1;
+    let top = (f64::from(bounding_rect.top as u32) + f64::from(self.top) * progress).floor();
+    let left = (f64::from(bounding_rect.left as u32) + f64::from(self.left) * progress).floor();
+    let width = (f64::from(source_width as u32) - f64::from(self.left) * progress
+      + f64::from(self.right) * progress)
+      .floor();
+    let height = (f64::from(source_height as u32) - f64::from(self.top) * progress
+      + f64::from(self.bottom) * progress)
+      .floor();
+
+    if width < 1. || height < 1. {
+      return;
+    }
+
+    for y in 0..height as usize {
+      for x in 0..width as usize {
+        let source_x = ((f64::from(x as u32) + 0.5) * f64::from(source_width as u32) / width)
+          .floor()
+          + f64::from(bounding_rect.left as u32);
+        let source_y = ((f64::from(y as u32) + 0.5) * f64::from(source_height as u32) / height)
+          .floor()
+          + f64::from(bounding_rect.top as u32);
+        let dest_x = left + f64::from(x as u32);
+        let dest_y = top + f64::from(y as u32);
+
+        if source_x < 0.
+          || source_x > f64::from(canvas_size.width - 1)
+          || source_y < 0.
+          || source_y > f64::from(canvas_size.height - 1)
+          || dest_x < 0.
+          || dest_x > f64::from(canvas_size.width - 1)
+          || dest_y < 0.
+          || dest_y > f64::from(canvas_size.height - 1)
+        {
+          continue;
+        }
+
+        copy_pixel(
+          &source,
+          target,
+          canvas_size,
+          source_x as usize,
+          source_y as usize,
+          dest_x as usize,
+          dest_y as usize,
+        );
+      }
+    }
+  }
+
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
+    let (rest, (top, bottom, left, right)) = (le_i32, le_i32, le_i32, le_i32).parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        top,
+        bottom,
+        left,
+        right,
+      },
+    ))
+  }
+}
+
+impl Marshal for MagicPropertyScaleContent {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let magic_type: u16 = 2;
+    magic_type.marshal(w)?;
+    self.top.marshal(w)?;
+    self.bottom.marshal(w)?;
+    self.left.marshal(w)?;
+    self.right.marshal(w)?;
+
+    Ok(())
+  }
+}
+
+/// Content data of rotation for magic property.
+#[derive(Debug, Clone, Copy)]
+pub struct MagicPropertyRotationContent {
+  pub angle: f32,
+}
+
+impl MagicPropertyRotationContent {
+  fn apply(&self, target: &mut [ArgbColor], canvas_size: &Size, progress: f64) {
+    let source = target.to_vec();
+    target.fill(ArgbColor::TRANSPARENT);
+
+    let center = Self::calc_bounding_center(&source, canvas_size);
+    let angle = f64::from(self.angle) * progress;
+    let (sin, cos) = angle.sin_cos();
+
+    for y in 0..canvas_size.height as usize {
+      for x in 0..canvas_size.width as usize {
+        let dx = f64::from(x as u32) - center.0;
+        let dy = f64::from(y as u32) - center.1;
+
+        let source_x = (center.0 + dx * cos + dy * sin).round();
+        let source_y = (center.1 - dx * sin + dy * cos).round();
+
+        if source_x < 0.
+          || source_x > f64::from(canvas_size.width - 1)
+          || source_y < 0.
+          || source_y > f64::from(canvas_size.height - 1)
+        {
+          continue;
+        }
+
+        copy_pixel(
+          &source,
+          target,
+          canvas_size,
+          source_x as usize,
+          source_y as usize,
+          x,
+          y,
+        );
+      }
+    }
+  }
+
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
+    let (rest, angle) = le_f32.parse(input)?;
+
+    Ok((rest, Self { angle }))
+  }
+
+  fn calc_bounding_center(source: &[ArgbColor], canvas_size: &Size) -> (f64, f64) {
+    let rect = get_bounding_rect(source, canvas_size);
+
+    let x_center = (f64::from(rect.right as u32) - f64::from(rect.left as u32)) / 2.
+      + f64::from(rect.left as u32);
+    let y_center = (f64::from(rect.bottom as u32) - f64::from(rect.top as u32)) / 2.
+      + f64::from(rect.top as u32);
+
+    (x_center, y_center)
+  }
+}
+
+impl Marshal for MagicPropertyRotationContent {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let magic_type: u16 = 3;
+    magic_type.marshal(w)?;
+    self.angle.marshal(w)?;
+
+    Ok(())
+  }
+}
+
 /// Header data of Entry.
 /// 16 bytes
 /// <https://docs.pixquare.art/pixquare-file/binary-specs#header-16-bytes-4>
@@ -2520,6 +3378,162 @@ impl ModelMarshal for TilemapLayer {
 
     let data_size = w.written_bytes();
     Ok(TilemapLayerHeader {
+      data_size: data_size as u32,
+    })
+  }
+}
+
+/// Header data of MagicLayer.
+///
+/// 32 bytes
+#[derive(Debug)]
+struct MagicLayerHeader {
+  data_size: u32,
+}
+
+impl MagicLayerHeader {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
+    let (rest, input) = take(32usize).parse(input)?;
+
+    let (_input, data_size) = le_u32.parse(input)?;
+
+    Ok((rest, Self { data_size }))
+  }
+}
+
+impl Marshal for MagicLayerHeader {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    self.data_size.marshal(w)?;
+
+    Ok(())
+  }
+}
+
+/// A magic layer with all data.
+///
+/// <https://docs.pixquare.art/pixquare-file/binary-specs#magic-layer>
+#[derive(Debug, Clone)]
+pub struct MagicLayer {
+  /// ID.
+  /// The length is specified in the header.
+  /// This is the same ID as the one in `Entry`.
+  pub id: String,
+  /// Name.
+  /// The length is specified in the header.
+  pub name: String,
+  /// Frames of this magic layer.
+  pub frames: Vec<Frame>,
+  pub opacity: f16,
+  pub visible: bool,
+  pub locked: bool,
+  pub selected: bool,
+  pub alpha_locked: bool,
+  /// Default: Normal
+  pub blend_mode: BlendMode,
+  /// Cropping masks, sorted in the actual order.
+  /// A higher index means being above.
+  /// Default: []
+  pub cropping_masks: Vec<Entry>,
+  /// Clipping masks, sorted in the actual order.
+  /// A higher index means being above.
+  /// Default: []
+  pub clipping_masks: Vec<Entry>,
+  /// Default: (0, 0, 0, 0)
+  pub color: ArgbColor,
+  /// Default: []
+  pub fxs: Vec<Fx>,
+  /// Default: []
+  pub magics: Vec<Magic>,
+  remaining_data: Vec<u8>,
+}
+
+impl MagicLayer {
+  fn parse(input: &[u8]) -> PPResult<&[u8], Self> {
+    let (input, header) = MagicLayerHeader::parse(input)?;
+    let (rest, input) = take(header.data_size as usize).parse(input)?;
+
+    let (
+      remaining_data,
+      (
+        id,
+        name,
+        frames,
+        opacity,
+        visible,
+        locked,
+        selected,
+        alpha_locked,
+        blend_mode,
+        cropping_masks,
+        clipping_masks,
+        color,
+        fxs,
+        magics,
+      ),
+    ) = (
+      string,
+      string,
+      array_type(Frame::parse),
+      float16,
+      bool,
+      bool,
+      bool,
+      bool,
+      blend_mode,
+      array_type(Entry::parse),
+      array_type(Entry::parse),
+      argb_color,
+      array_type(Fx::parse),
+      array_type(Magic::parse),
+    )
+      .parse(input)?;
+
+    Ok((
+      rest,
+      Self {
+        id: id.to_string(),
+        name: name.to_string(),
+        frames,
+        opacity,
+        visible,
+        locked,
+        selected,
+        alpha_locked,
+        blend_mode,
+        cropping_masks,
+        clipping_masks,
+        color,
+        fxs,
+        magics,
+        remaining_data: remaining_data.into(),
+      },
+    ))
+  }
+}
+
+impl ModelMarshal for MagicLayer {
+  type Header = MagicLayerHeader;
+  const HEADER_SIZE: usize = 32usize;
+
+  fn write_data<W: CountingWrite>(&self, w: &mut W) -> PMResult<Self::Header> {
+    let _ = self.id.marshal(w)?;
+    let _ = self.name.marshal(w)?;
+    self.frames.marshal(w)?;
+    self.opacity.marshal(w)?;
+    self.visible.marshal(w)?;
+    self.locked.marshal(w)?;
+    self.selected.marshal(w)?;
+    self.alpha_locked.marshal(w)?;
+    self.blend_mode.marshal(w)?;
+    self.cropping_masks.marshal(w)?;
+    self.clipping_masks.marshal(w)?;
+    self.color.marshal(w)?;
+    self.fxs.marshal(w)?;
+    self.magics.marshal(w)?;
+    TypeN::new(&self.remaining_data).marshal(w)?;
+
+    let data_size = w.written_bytes();
+    Ok(MagicLayerHeader {
       data_size: data_size as u32,
     })
   }
@@ -3904,6 +4918,10 @@ pub struct Artwork {
   pub tiled_corners: Corners,
   /// Default: []
   pub modifiers: Vec<Modifier>,
+  /// Default: (1, 1)
+  pub pixel_size: Size,
+  /// Default: []
+  pub magic_layers: Vec<MagicLayer>,
   remaining_data: Vec<u8>,
 }
 
@@ -3976,6 +4994,12 @@ impl<'a> Artwork {
       .map(|layer| layer.frames.as_slice())
       .or_else(|| {
         self
+          .magic_layers
+          .first()
+          .map(|layer| layer.frames.as_slice())
+      })
+      .or_else(|| {
+        self
           .tilemap_layers
           .first()
           .map(|layer| layer.frames.as_slice())
@@ -3990,8 +5014,16 @@ impl<'a> Artwork {
   pub fn frames_len(&self) -> usize {
     let layer_frames_len = self.layers.first().map_or(0, |l| l.frames.len());
     let tilemap_layer_frames_len = self.tilemap_layers.first().map_or(0, |l| l.frames.len());
+    let magic_layer_frames_len = self.magic_layers.first().map_or(0, |l| l.frames.len());
 
-    layer_frames_len.max(tilemap_layer_frames_len)
+    layer_frames_len
+      .max(tilemap_layer_frames_len)
+      .max(magic_layer_frames_len)
+  }
+
+  /// Returns size of the rendering image, accounting for pixel size and other factors.
+  pub fn render_size(&self) -> Size {
+    self.canvas_size * self.pixel_size
   }
 
   /// Refresh artwork images by current binary data.
@@ -4040,6 +5072,8 @@ impl<'a> Artwork {
         is_need_timelapse,
         tiled_corners,
         modifiers,
+        pixel_size,
+        magic_layers,
       ),
     ) = (
       dumb_string(header.id_len as usize),
@@ -4068,6 +5102,8 @@ impl<'a> Artwork {
       bool,
       corners,
       array_type(Modifier::parse),
+      size,
+      array_type(MagicLayer::parse),
     )
       .parse(input)?;
 
@@ -4098,6 +5134,8 @@ impl<'a> Artwork {
         is_need_timelapse,
         tiled_corners,
         modifiers,
+        pixel_size,
+        magic_layers,
         remaining_data: remaining_data.into(),
       },
     ))
@@ -4115,11 +5153,40 @@ impl<'a> Artwork {
 
     render_plan.render_onto(&mut composited_image)?;
 
+    composited_image = self.scale_image(&composited_image);
+
     for ps in &self.post_processors {
-      ps.apply(&mut composited_image, &self.canvas_size)?;
+      ps.apply(&mut composited_image, &self.render_size())?;
     }
 
     Ok(composited_image)
+  }
+
+  fn scale_image(&self, image: &[ArgbColor]) -> Vec<ArgbColor> {
+    let scaled_width = self.canvas_size.width as usize * self.pixel_size.width as usize;
+    let mut scaled_image =
+      vec![
+        ArgbColor::TRANSPARENT;
+        image.len() * self.pixel_size.width as usize * self.pixel_size.height as usize
+      ];
+
+    for (original_index, pixel) in image.iter().enumerate() {
+      let original_x = original_index % self.canvas_size.width as usize;
+      let original_y = original_index / self.canvas_size.width as usize;
+
+      for offset_x in 0..self.pixel_size.width as usize {
+        let scaled_x = original_x * self.pixel_size.width as usize + offset_x;
+
+        for offset_y in 0..self.pixel_size.height as usize {
+          let scaled_y = original_y * self.pixel_size.height as usize + offset_y;
+          let scaled_index = scaled_y * scaled_width + scaled_x;
+
+          scaled_image[scaled_index] = *pixel;
+        }
+      }
+    }
+
+    scaled_image
   }
 }
 
@@ -4154,6 +5221,8 @@ impl ModelMarshal for Artwork {
     self.is_need_timelapse.marshal(&mut w)?;
     self.tiled_corners.marshal(&mut w)?;
     self.modifiers.marshal(&mut w)?;
+    self.pixel_size.marshal(&mut w)?;
+    self.magic_layers.marshal(w)?;
     TypeN::new(&self.remaining_data).marshal(&mut w)?;
 
     let file_size = w.written_bytes();
@@ -4167,6 +5236,8 @@ impl ModelMarshal for Artwork {
 
 #[cfg(test)]
 mod tests {
+  use std::f32::consts::PI;
+
   use crate::composite_type::Coordinate;
 
   use super::*;
@@ -4198,7 +5269,7 @@ mod tests {
     assert!(artwork.tilemap_layers.is_empty());
     assert!(artwork.tilemap_frame_contents.is_empty());
     assert_eq!(artwork.color_depth, ColorDepth::Rgb);
-    assert_eq!(artwork.stats.spent, 504);
+    assert_eq!(artwork.stats.spent, 508);
     assert_eq!(artwork.stats.stroke_count, 83);
     assert_eq!(artwork.stats.undos_count, 23);
     assert_eq!(artwork.stats.redos_count, 2);
@@ -4263,6 +5334,7 @@ mod tests {
       }
     );
     assert!(artwork.modifiers.is_empty());
+    assert_eq!(artwork.pixel_size, Size::new(1, 1));
     assert!(artwork.remaining_data.is_empty());
   }
 
@@ -5493,6 +6565,294 @@ mod tests {
   }
 
   #[test]
+  fn test_parse_pixel_size_data() {
+    let path = "assets/fixtures/pixel_size.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.canvas_size, Size::new(64, 64));
+    assert_eq!(artwork.pixel_size, Size::new(2, 2));
+  }
+
+  #[test]
+  fn test_parse_magic_layer_parallax_data() {
+    let path = "assets/fixtures/magic_layer-parallax.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.entries.len(), 4);
+    assert_eq!(artwork.magic_layers.len(), 3);
+    assert_eq!(artwork.entries[1].id, artwork.magic_layers[0].id);
+    assert_eq!(artwork.entries[2].id, artwork.magic_layers[1].id);
+    assert_eq!(artwork.entries[3].id, artwork.magic_layers[2].id);
+
+    // Magic Layer 1
+    assert_eq!(artwork.magic_layers[0].name, "Magic Layer 1");
+    assert_eq!(artwork.magic_layers[0].frames.len(), 8);
+    assert_eq!(artwork.magic_layers[0].opacity, f16::from_f32(1.0));
+    assert!(artwork.magic_layers[0].visible);
+    assert!(!artwork.magic_layers[0].locked);
+    assert!(artwork.magic_layers[0].selected);
+    assert!(!artwork.magic_layers[0].alpha_locked);
+    assert_eq!(artwork.magic_layers[0].blend_mode, BlendMode::Normal);
+    assert!(artwork.magic_layers[0].cropping_masks.is_empty());
+    assert!(artwork.magic_layers[0].clipping_masks.is_empty());
+    assert_eq!(
+      artwork.magic_layers[0].color,
+      ArgbColor::new(135, 102, 199, 255)
+    );
+    assert!(artwork.magic_layers[0].fxs.is_empty());
+    let Magic::Parallax(parallax1) = &artwork.magic_layers[0].magics[0] else {
+      panic!("expected Magic::Parallax");
+    };
+    assert!(parallax1.enabled);
+    assert_eq!(parallax1.x, -7);
+    assert_eq!(parallax1.y, 0);
+    assert_eq!(parallax1._unused, 0);
+    assert!(artwork.magic_layers[0].remaining_data.is_empty());
+    // Magic Layer 2
+    assert_eq!(artwork.magic_layers[1].name, "Magic Layer 2");
+    assert_eq!(artwork.magic_layers[1].frames.len(), 8);
+    assert_eq!(artwork.magic_layers[1].opacity, f16::from_f32(1.0));
+    assert!(artwork.magic_layers[1].visible);
+    assert!(artwork.magic_layers[1].locked);
+    assert!(!artwork.magic_layers[1].selected);
+    assert!(!artwork.magic_layers[1].alpha_locked);
+    assert_eq!(artwork.magic_layers[1].blend_mode, BlendMode::Normal);
+    assert!(artwork.magic_layers[1].cropping_masks.is_empty());
+    assert!(artwork.magic_layers[1].clipping_masks.is_empty());
+    assert_eq!(artwork.magic_layers[1].color, ArgbColor::default());
+    assert!(artwork.magic_layers[1].fxs.is_empty());
+    let Magic::Parallax(parallax2) = &artwork.magic_layers[1].magics[0] else {
+      panic!("expected Magic::Parallax");
+    };
+    assert!(parallax2.enabled);
+    assert_eq!(parallax2.x, 0);
+    assert_eq!(parallax2.y, 8);
+    assert_eq!(parallax2._unused, 0);
+    assert!(artwork.magic_layers[1].remaining_data.is_empty());
+    // Magic Layer 3
+    assert_eq!(artwork.magic_layers[2].name, "Magic Layer 3");
+    assert_eq!(artwork.magic_layers[2].frames.len(), 8);
+    assert_eq!(artwork.magic_layers[2].opacity, f16::from_f32(1.0));
+    assert!(!artwork.magic_layers[2].visible);
+    assert!(!artwork.magic_layers[2].locked);
+    assert!(!artwork.magic_layers[2].selected);
+    assert!(!artwork.magic_layers[2].alpha_locked);
+    assert_eq!(artwork.magic_layers[2].blend_mode, BlendMode::Normal);
+    assert!(artwork.magic_layers[2].cropping_masks.is_empty());
+    assert!(artwork.magic_layers[2].clipping_masks.is_empty());
+    assert_eq!(artwork.magic_layers[2].color, ArgbColor::default());
+    assert!(artwork.magic_layers[2].fxs.is_empty());
+    let Magic::Parallax(parallax3) = &artwork.magic_layers[2].magics[0] else {
+      panic!("expected Magic::Parallax");
+    };
+    assert!(parallax3.enabled);
+    assert_eq!(parallax3.x, 4);
+    assert_eq!(parallax3.y, 0);
+    assert_eq!(parallax3._unused, 0);
+    assert!(artwork.magic_layers[2].remaining_data.is_empty());
+  }
+
+  #[test]
+  fn test_parse_magic_layer_skewing_data() {
+    let path = "assets/fixtures/magic_layer-skewing.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.entries.len(), 3);
+    assert_eq!(artwork.magic_layers.len(), 2);
+    assert_eq!(artwork.entries[1].id, artwork.magic_layers[0].id);
+    assert_eq!(artwork.entries[2].id, artwork.magic_layers[1].id);
+
+    // Magic Layer 1
+    assert_eq!(artwork.magic_layers[0].name, "Magic Layer 1");
+    assert_eq!(artwork.magic_layers[0].frames.len(), 6);
+    assert_eq!(artwork.magic_layers[0].opacity, f16::from_f32(1.0));
+    assert!(artwork.magic_layers[0].visible);
+    assert!(!artwork.magic_layers[0].locked);
+    assert!(!artwork.magic_layers[0].selected);
+    assert!(!artwork.magic_layers[0].alpha_locked);
+    assert_eq!(artwork.magic_layers[0].blend_mode, BlendMode::Normal);
+    assert!(artwork.magic_layers[0].cropping_masks.is_empty());
+    assert!(artwork.magic_layers[0].clipping_masks.is_empty());
+    let Magic::Skewing(skewing1) = &artwork.magic_layers[0].magics[0] else {
+      panic!("expected Magic::Skewing");
+    };
+    assert!(skewing1.enabled);
+    assert_eq!(skewing1.axis, Axis::Horizontal);
+    assert_eq!(skewing1.step, 1);
+    assert_eq!(skewing1.size, 6);
+    assert_eq!(skewing1.count, 2);
+    assert!(artwork.magic_layers[0].remaining_data.is_empty());
+    // Magic Layer 2
+    assert_eq!(artwork.magic_layers[1].name, "Magic Layer 2");
+    assert_eq!(artwork.magic_layers[1].frames.len(), 6);
+    assert_eq!(artwork.magic_layers[1].opacity, f16::from_f32(1.0));
+    assert!(artwork.magic_layers[1].visible);
+    assert!(!artwork.magic_layers[1].locked);
+    assert!(artwork.magic_layers[1].selected);
+    assert!(!artwork.magic_layers[1].alpha_locked);
+    assert_eq!(artwork.magic_layers[1].blend_mode, BlendMode::Normal);
+    assert!(artwork.magic_layers[1].cropping_masks.is_empty());
+    assert!(artwork.magic_layers[1].clipping_masks.is_empty());
+    let Magic::Skewing(skewing2) = &artwork.magic_layers[1].magics[0] else {
+      panic!("expected Magic::Skewing");
+    };
+    assert!(skewing1.enabled);
+    assert_eq!(skewing2.axis, Axis::Vertical);
+    assert_eq!(skewing2.step, 2);
+    assert_eq!(skewing2.size, 3);
+    assert_eq!(skewing2.count, 4);
+    assert!(artwork.magic_layers[1].remaining_data.is_empty());
+  }
+
+  #[test]
+  fn test_parse_magic_layer_tween_data() {
+    let path = "assets/fixtures/magic_layer-tween.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.entries.len(), 3);
+    assert_eq!(artwork.magic_layers.len(), 2);
+    assert_eq!(artwork.entries[1].id, artwork.magic_layers[0].id);
+    assert_eq!(artwork.entries[2].id, artwork.magic_layers[1].id);
+
+    // Magic Layer 1
+    assert_eq!(artwork.magic_layers[0].name, "Magic Layer 1");
+    assert_eq!(artwork.magic_layers[0].frames.len(), 12);
+    assert_eq!(artwork.magic_layers[0].opacity, f16::from_f32(1.0));
+    assert!(artwork.magic_layers[0].visible);
+    assert!(!artwork.magic_layers[0].locked);
+    assert!(!artwork.magic_layers[0].selected);
+    assert!(!artwork.magic_layers[0].alpha_locked);
+    assert_eq!(artwork.magic_layers[0].blend_mode, BlendMode::Normal);
+    assert!(artwork.magic_layers[0].cropping_masks.is_empty());
+    assert!(artwork.magic_layers[0].clipping_masks.is_empty());
+    let Magic::Tween(tween1) = &artwork.magic_layers[0].magics[0] else {
+      panic!("expected Magic::Tween");
+    };
+    assert!(tween1.enabled);
+    assert_eq!(tween1.curve, Curve::EaseIn);
+    assert_eq!(tween1.properties.len(), 2);
+    let MagicProperty::ColorAdjustment(color_adjuestment) = &tween1.properties[0] else {
+      panic!("expected MagicProperty::ColorAdjustment");
+    };
+    assert_eq!(color_adjuestment.first_value, 0.);
+    assert_eq!(color_adjuestment.second_value, 0.25);
+    assert_eq!(color_adjuestment.third_value, -0.29);
+    assert_eq!(color_adjuestment.alpha_shift, 0.26);
+    let MagicProperty::Scale(scaling) = &tween1.properties[1] else {
+      panic!("expected MagicProperty::Scale");
+    };
+    assert_eq!(scaling.top, 2);
+    assert_eq!(scaling.bottom, 3);
+    assert_eq!(scaling.left, -6);
+    assert_eq!(scaling.right, 5);
+    assert_eq!(tween1.frame_count, 7);
+    assert!(tween1.auto_reverse);
+    assert_eq!(tween1.loop_count, 0);
+    assert!(artwork.magic_layers[0].remaining_data.is_empty());
+    // Magic Layer 2
+    assert_eq!(artwork.magic_layers[1].name, "Magic Layer 2");
+    assert_eq!(artwork.magic_layers[1].frames.len(), 12);
+    assert_eq!(artwork.magic_layers[1].opacity, f16::from_f32(1.0));
+    assert!(artwork.magic_layers[1].visible);
+    assert!(!artwork.magic_layers[1].locked);
+    assert!(artwork.magic_layers[1].selected);
+    assert!(!artwork.magic_layers[1].alpha_locked);
+    assert_eq!(artwork.magic_layers[1].blend_mode, BlendMode::Normal);
+    assert!(artwork.magic_layers[1].cropping_masks.is_empty());
+    assert!(artwork.magic_layers[1].clipping_masks.is_empty());
+    let Magic::Tween(tween1) = &artwork.magic_layers[1].magics[0] else {
+      panic!("expected Magic::Tween");
+    };
+    assert!(tween1.enabled);
+    assert_eq!(tween1.curve, Curve::Smooth);
+    assert_eq!(tween1.properties.len(), 2);
+    let MagicProperty::Rotation(rotation) = &tween1.properties[0] else {
+      panic!("expected MagicProperty::Rotation");
+    };
+    assert_eq!(rotation.angle, 180. / 180. * PI);
+    let MagicProperty::Displacement(displacement) = &tween1.properties[1] else {
+      panic!("expected MagicProperty::Displacement");
+    };
+    assert_eq!(displacement.displacement.x, 5);
+    assert_eq!(displacement.displacement.y, -4);
+    assert_eq!(tween1.frame_count, 12);
+    assert!(!tween1.auto_reverse);
+    assert_eq!(tween1.loop_count, 3);
+    assert!(artwork.magic_layers[1].remaining_data.is_empty());
+  }
+
+  #[test]
+  fn test_parse_magic_layer_wave_data() {
+    let path = "assets/fixtures/magic_layer-wave.px";
+    let file_data = std::fs::read(path).unwrap();
+    let file = Artwork::read(&file_data);
+
+    assert!(file.is_ok());
+
+    let artwork = file.unwrap();
+    assert_eq!(artwork.entries.len(), 3);
+    assert_eq!(artwork.magic_layers.len(), 2);
+    assert_eq!(artwork.entries[1].id, artwork.magic_layers[0].id);
+    assert_eq!(artwork.entries[2].id, artwork.magic_layers[1].id);
+
+    // Magic Layer 1
+    assert_eq!(artwork.magic_layers[0].name, "Magic Layer 1");
+    assert_eq!(artwork.magic_layers[0].frames.len(), 10);
+    assert_eq!(artwork.magic_layers[0].opacity, f16::from_f32(1.0));
+    assert!(artwork.magic_layers[0].visible);
+    assert!(!artwork.magic_layers[0].locked);
+    assert!(artwork.magic_layers[0].selected);
+    assert!(!artwork.magic_layers[0].alpha_locked);
+    assert_eq!(artwork.magic_layers[0].blend_mode, BlendMode::Normal);
+    assert!(artwork.magic_layers[0].cropping_masks.is_empty());
+    assert!(artwork.magic_layers[0].clipping_masks.is_empty());
+    let Magic::Wave(wave1) = &artwork.magic_layers[0].magics[0] else {
+      panic!("expected Magic::Wave");
+    };
+    assert!(wave1.enabled);
+    assert_eq!(wave1.size, 16);
+    assert_eq!(wave1.step, 1);
+    assert_eq!(wave1.angle * 180. / PI, 20.);
+    assert_eq!(wave1.frame_count, 3);
+
+    // Magic Layer 2
+    assert_eq!(artwork.magic_layers[1].name, "Magic Layer 2");
+    assert_eq!(artwork.magic_layers[1].frames.len(), 10);
+    assert_eq!(artwork.magic_layers[1].opacity, f16::from_f32(1.0));
+    assert!(artwork.magic_layers[1].visible);
+    assert!(!artwork.magic_layers[1].locked);
+    assert!(!artwork.magic_layers[1].selected);
+    assert!(!artwork.magic_layers[1].alpha_locked);
+    assert_eq!(artwork.magic_layers[1].blend_mode, BlendMode::Normal);
+    assert!(artwork.magic_layers[1].cropping_masks.is_empty());
+    assert!(artwork.magic_layers[1].clipping_masks.is_empty());
+    let Magic::Wave(wave2) = &artwork.magic_layers[1].magics[0] else {
+      panic!("expected Magic::Wave");
+    };
+    assert!(wave2.enabled);
+    assert_eq!(wave2.size, 12);
+    assert_eq!(wave2.step, 4);
+    assert_eq!(wave2.angle * 180. / PI, 30.);
+    assert_eq!(wave2.frame_count, 10);
+  }
+
+  #[test]
   fn test_marshal_simple_data() {
     let path = "assets/fixtures/simple.px";
     let original_file_data = std::fs::read(path).unwrap();
@@ -5845,6 +7205,76 @@ mod tests {
   #[test]
   fn test_marshal_modifier_speed_multiplier_data() {
     let path = "assets/fixtures/modifier-speed_multiplier.px";
+    let original_file_data = std::fs::read(path).unwrap();
+    let original_file = Artwork::read(&original_file_data).unwrap();
+
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
+    assert!(result.is_ok());
+
+    let file = Artwork::read(&written_file_data);
+    assert!(file.is_ok());
+  }
+
+  #[test]
+  fn test_marshal_pixel_size_data() {
+    let path = "assets/fixtures/pixel_size.px";
+    let original_file_data = std::fs::read(path).unwrap();
+    let original_file = Artwork::read(&original_file_data).unwrap();
+
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
+    assert!(result.is_ok());
+
+    let file = Artwork::read(&written_file_data);
+    assert!(file.is_ok());
+  }
+
+  #[test]
+  fn test_marshal_magic_layer_parallax_data() {
+    let path = "assets/fixtures/magic_layer-parallax.px";
+    let original_file_data = std::fs::read(path).unwrap();
+    let original_file = Artwork::read(&original_file_data).unwrap();
+
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
+    assert!(result.is_ok());
+
+    let file = Artwork::read(&written_file_data);
+    assert!(file.is_ok());
+  }
+
+  #[test]
+  fn test_marshal_magic_layer_skewing_data() {
+    let path = "assets/fixtures/magic_layer-skewing.px";
+    let original_file_data = std::fs::read(path).unwrap();
+    let original_file = Artwork::read(&original_file_data).unwrap();
+
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
+    assert!(result.is_ok());
+
+    let file = Artwork::read(&written_file_data);
+    assert!(file.is_ok());
+  }
+
+  #[test]
+  fn test_marshal_magic_layer_tween_data() {
+    let path = "assets/fixtures/magic_layer-tween.px";
+    let original_file_data = std::fs::read(path).unwrap();
+    let original_file = Artwork::read(&original_file_data).unwrap();
+
+    let mut written_file_data = Vec::new();
+    let result = original_file.write(&mut written_file_data);
+    assert!(result.is_ok());
+
+    let file = Artwork::read(&written_file_data);
+    assert!(file.is_ok());
+  }
+
+  #[test]
+  fn test_marshal_magic_layer_wave_data() {
+    let path = "assets/fixtures/magic_layer-wave.px";
     let original_file_data = std::fs::read(path).unwrap();
     let original_file = Artwork::read(&original_file_data).unwrap();
 

@@ -1,10 +1,15 @@
 use half::f16;
-use msgw3c::{batch_blend_with_in_place, batch_normal_in_place, composite::PorterDuff};
+use msgw3c::{
+  Blend, batch_blend_with_in_place, batch_normal_in_place, color::C, composite::PorterDuff,
+};
 
 use crate::{
   composite_type::{ArgbColor, BlendMode, EntryType, Size},
   error::ArtworkOperationError,
-  model::{Artwork, Entry, Frame, FrameContent, Layer, TilemapFrameContent, TilemapLayer, Tileset},
+  model::{
+    Artwork, Entry, Frame, FrameContent, Layer, MagicLayer, TilemapFrameContent, TilemapLayer,
+    Tileset,
+  },
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,6 +46,18 @@ pub(crate) enum RenderPlan<'a> {
     tileset: &'a Tileset,
     canvas_size: Size,
     base_index: usize,
+  },
+  MagicLayer {
+    layer: &'a MagicLayer,
+    frame_index: usize,
+    frame: &'a Frame,
+    content: &'a FrameContent,
+    base_index: usize,
+    has_clipping_masks: bool,
+    has_cropping_masks: bool,
+    clipping_masks: Vec<RenderPlan<'a>>,
+    cropping_masks: Vec<RenderPlan<'a>>,
+    canvas_size: Size,
   },
 }
 
@@ -219,6 +236,63 @@ impl<'a> RenderPlan<'a> {
           };
           plans.push(plan);
         }
+        EntryType::MagicLayer => {
+          let layer = artwork
+            .magic_layers
+            .iter()
+            .find(|layer| layer.id == entry.id)
+            .ok_or(ArtworkOperationError::LayerNotFound(entry.id.clone()))?;
+
+          if visibility == LayerVisibility::Visible && !layer.visible {
+            continue;
+          }
+
+          let frame =
+            layer
+              .frames
+              .get(frame_index)
+              .ok_or(ArtworkOperationError::FrameIndexOutOfBounds((
+                frame_index,
+                layer.frames.len(),
+              )))?;
+          let content = artwork
+            .frame_contents
+            .iter()
+            .find(|content| content.id == frame.content_id)
+            .ok_or(ArtworkOperationError::FrameContentNotFound(
+              frame.content_id.clone(),
+            ))?;
+
+          let mut clipping_masks =
+            Self::build_children(&layer.clipping_masks, artwork, frame_index, visibility)?;
+          clipping_masks.sort_by(|a, b| {
+            a.primary_order_index()
+              .cmp(&b.primary_order_index())
+              .then(a.secondary_order_index().cmp(&b.secondary_order_index()))
+          });
+
+          let mut cropping_masks =
+            Self::build_children(&layer.cropping_masks, artwork, frame_index, visibility)?;
+          cropping_masks.sort_by(|a, b| {
+            a.primary_order_index()
+              .cmp(&b.primary_order_index())
+              .then(a.secondary_order_index().cmp(&b.secondary_order_index()))
+          });
+
+          let plan = RenderPlan::MagicLayer {
+            layer,
+            frame_index,
+            frame,
+            content,
+            base_index,
+            has_clipping_masks: !layer.clipping_masks.is_empty(),
+            has_cropping_masks: !layer.cropping_masks.is_empty(),
+            clipping_masks,
+            cropping_masks,
+            canvas_size: artwork.canvas_size,
+          };
+          plans.push(plan);
+        }
         _ => (),
       }
     }
@@ -363,6 +437,53 @@ impl<'a> RenderPlan<'a> {
 
         Ok(())
       }
+      Self::MagicLayer {
+        layer,
+        frame_index,
+        frame,
+        content,
+        has_cropping_masks,
+        clipping_masks,
+        cropping_masks,
+        canvas_size,
+        ..
+      } => {
+        let Some(image) = &content._image else {
+          return Ok(());
+        };
+        let mut foreground = image.clone();
+
+        for magic in &layer.magics {
+          magic.apply(&mut foreground, canvas_size, *frame_index);
+        }
+
+        for fx in &layer.fxs {
+          foreground = fx.apply(&foreground, canvas_size)?;
+        }
+
+        if *has_cropping_masks {
+          apply_cropping(&mut foreground, cropping_masks)?;
+        } else {
+          for mask in clipping_masks {
+            mask.clip_onto(&mut foreground)?;
+          }
+        }
+
+        if frame.opacity == f16::from_f32(2.0) {
+          foreground.multiply_alpha_f32(layer.opacity.to_f32());
+        } else {
+          foreground.multiply_alpha_f32(frame.opacity.to_f32());
+        }
+
+        batch_blend_with_in_place(
+          &foreground,
+          backdrop,
+          self.effective_blend_mode().into(),
+          PorterDuff::SourceOver,
+        )?;
+
+        Ok(())
+      }
     }
   }
 
@@ -383,6 +504,13 @@ impl<'a> RenderPlan<'a> {
           frame.z_index
         }
       }
+      Self::MagicLayer { frame, .. } => {
+        if frame.z_index == 0 {
+          0
+        } else {
+          frame.z_index
+        }
+      }
     }
   }
 
@@ -391,6 +519,7 @@ impl<'a> RenderPlan<'a> {
       Self::Group { base_index, .. } => *base_index as i16,
       Self::RegularLayer { base_index, .. } => *base_index as i16,
       Self::TilemapLayer { base_index, .. } => *base_index as i16,
+      Self::MagicLayer { base_index, .. } => *base_index as i16,
     }
   }
 
@@ -431,6 +560,18 @@ impl<'a> RenderPlan<'a> {
       }
       Self::TilemapLayer { layer, .. } => layer.blend_mode,
       Self::Group { .. } => BlendMode::Normal,
+      Self::MagicLayer {
+        layer,
+        has_clipping_masks,
+        has_cropping_masks,
+        ..
+      } => {
+        if *has_clipping_masks || *has_cropping_masks {
+          BlendMode::Normal
+        } else {
+          layer.blend_mode
+        }
+      }
     }
   }
 }
@@ -459,5 +600,77 @@ impl ArgbColorSlice for [ArgbColor] {
     for color in self {
       color.multiply_alpha_f32(alpha);
     }
+  }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BoundingRect {
+  pub(crate) top: usize,
+  pub(crate) right: usize,
+  pub(crate) bottom: usize,
+  pub(crate) left: usize,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub(crate) struct HsvaColor {
+  pub(crate) h: f32,
+  pub(crate) s: f32,
+  pub(crate) v: f32,
+  pub(crate) a: f32,
+}
+
+impl HsvaColor {
+  pub(crate) fn to_rgba(self) -> ArgbColor {
+    let h_prime = self.h.rem_euclid(std::f32::consts::TAU) * 3. / std::f32::consts::PI;
+    let i = h_prime.floor() as u8 % 6;
+    let f = h_prime.fract();
+
+    let p = self.v * (1. - self.s);
+    let q = self.v * (1. - f * self.s);
+    let t = self.v * (1. - (1. - f) * self.s);
+
+    let c = match i {
+      0 => C::from_straight_alpha(self.v, t, p, self.a),
+      1 => C::from_straight_alpha(q, self.v, p, self.a),
+      2 => C::from_straight_alpha(p, self.v, t, self.a),
+      3 => C::from_straight_alpha(p, q, self.v, self.a),
+      4 => C::from_straight_alpha(t, p, self.v, self.a),
+      _ => C::from_straight_alpha(self.v, p, q, self.a),
+    };
+
+    ArgbColor::from_color(c)
+  }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub(crate) struct HslaColor {
+  pub(crate) h: f32,
+  pub(crate) s: f32,
+  pub(crate) l: f32,
+  pub(crate) a: f32,
+}
+
+impl HslaColor {
+  pub(crate) fn to_rgba(self) -> ArgbColor {
+    let h_prime = (self.h % std::f32::consts::TAU) * 3. / std::f32::consts::PI;
+    let c = (1. - (2. * self.l - 1.).abs()) * self.s;
+    let x = c * (1. - (h_prime % 2. - 1.).abs());
+    let m = self.l - c / 2.;
+
+    let color = if (0. ..1.).contains(&h_prime) {
+      C::from_straight_alpha(c + m, x + m, m, self.a)
+    } else if (1. ..2.).contains(&h_prime) {
+      C::from_straight_alpha(x + m, c + m, m, self.a)
+    } else if (2. ..3.).contains(&h_prime) {
+      C::from_straight_alpha(m, c + m, x + m, self.a)
+    } else if (3. ..4.).contains(&h_prime) {
+      C::from_straight_alpha(m, x + m, c + m, self.a)
+    } else if (4. ..5.).contains(&h_prime) {
+      C::from_straight_alpha(x + m, m, c + m, self.a)
+    } else {
+      C::from_straight_alpha(c + m, m, x + m, self.a)
+    };
+
+    ArgbColor::from_color(color)
   }
 }

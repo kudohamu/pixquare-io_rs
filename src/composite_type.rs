@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::{io::Write, ops::Mul};
 
 use msgw3c::Blend;
 
@@ -6,10 +6,11 @@ use crate::{
   error::{PMResult, ParseError},
   marshaler::Marshal,
   primitive_type::OptionSet,
+  utility_type::{HslaColor, HsvaColor},
 };
 
 /// <https://docs.pixquare.art/pixquare-file/binary-specs#coordinate>
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Coordinate {
   pub x: i32,
   pub y: i32,
@@ -25,7 +26,7 @@ impl Marshal for Coordinate {
 }
 
 /// <https://docs.pixquare.art/pixquare-file/binary-specs#size>
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Size {
   pub width: u32,
   pub height: u32,
@@ -46,8 +47,19 @@ impl Marshal for Size {
   }
 }
 
+impl Mul for Size {
+  type Output = Size;
+
+  fn mul(self, rhs: Self) -> Self::Output {
+    Self::Output {
+      width: self.width * rhs.width,
+      height: self.height * rhs.height,
+    }
+  }
+}
+
 /// <https://docs.pixquare.art/pixquare-file/binary-specs#rect>
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Rect {
   pub origin: Coordinate,
   pub size: Size,
@@ -125,6 +137,67 @@ impl ArgbColor {
     self.g = (self.g as f32 * alpha).round().clamp(0.0, 255.0) as u8;
     self.b = (self.b as f32 * alpha).round().clamp(0.0, 255.0) as u8;
     self.a = (self.a as f32 * alpha).round().clamp(0.0, 255.0) as u8;
+  }
+
+  pub(crate) fn to_hsva(self) -> HsvaColor {
+    let straight = self.to_straight_alpha().to_color();
+
+    let c_max = straight.r.max(straight.g).max(straight.b);
+    let c_min = straight.r.min(straight.g).min(straight.b);
+    let delta = c_max - c_min;
+
+    let h = if straight.r == straight.g && straight.g == straight.b {
+      0.
+    } else if c_max == straight.r {
+      (straight.g - straight.b) / delta * std::f32::consts::PI / 3.
+    } else if c_max == straight.g {
+      ((straight.b - straight.r) / delta + 2.) * std::f32::consts::PI / 3.
+    } else {
+      ((straight.r - straight.g) / delta + 4.) * std::f32::consts::PI / 3.
+    };
+
+    let s = if c_max == 0. { 0. } else { delta / c_max };
+    let v = c_max;
+
+    HsvaColor {
+      h,
+      s,
+      v,
+      a: straight.a,
+    }
+  }
+
+  pub(crate) fn to_hsla(self) -> HslaColor {
+    let straight = self.to_straight_alpha().to_color();
+
+    let c_max = straight.r.max(straight.g).max(straight.b);
+    let c_min = straight.r.min(straight.g).min(straight.b);
+    let delta = c_max - c_min;
+
+    let l = (c_max + c_min) / 2.;
+    let s = if delta == 0. {
+      0.
+    } else if l <= 0.5 {
+      delta / (2. * l)
+    } else {
+      delta / (2. - 2. * l)
+    };
+    let h = if delta == 0. {
+      0.
+    } else if c_max == straight.r {
+      ((straight.g - straight.b) / delta % 6.) * std::f32::consts::PI / 3.
+    } else if c_max == straight.g {
+      ((straight.b - straight.r) / delta + 2.) * std::f32::consts::PI / 3.
+    } else {
+      ((straight.r - straight.g) / delta + 4.) * std::f32::consts::PI / 3.
+    };
+
+    HslaColor {
+      h,
+      s,
+      l,
+      a: straight.a,
+    }
   }
 }
 
@@ -405,6 +478,7 @@ pub enum EntryType {
   Group,
   ReferenceLayer,
   TilemapLayer,
+  MagicLayer,
   Unknown(u8),
 }
 
@@ -415,6 +489,7 @@ impl From<u8> for EntryType {
       1 => Self::Group,
       2 => Self::ReferenceLayer,
       3 => Self::TilemapLayer,
+      4 => Self::MagicLayer,
       _ => Self::Unknown(v),
     }
   }
@@ -427,6 +502,7 @@ impl From<EntryType> for u8 {
       EntryType::Group => 1,
       EntryType::ReferenceLayer => 2,
       EntryType::TilemapLayer => 3,
+      EntryType::MagicLayer => 4,
       EntryType::Unknown(v) => v,
     }
   }
@@ -726,6 +802,234 @@ impl From<ColorDepth> for u8 {
 impl Marshal for ColorDepth {
   fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
     let v: u8 = (*self).into();
+    v.marshal(w)?;
+
+    Ok(())
+  }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tone {
+  Shadow,
+  Midtone,
+  Highlight,
+  All,
+  Unknown(u8),
+}
+
+impl Tone {
+  pub(crate) fn is_target(&self, color: &ArgbColor) -> bool {
+    let hsl = color.to_hsla();
+
+    match self {
+      Self::Shadow => hsl.l < (1. / 3.),
+      Self::Midtone => (1. / 3.) <= hsl.l && hsl.l < (2. / 3.),
+      Self::Highlight => (2. / 3.) <= hsl.l,
+      Self::All => true,
+      Self::Unknown(_) => false,
+    }
+  }
+}
+
+impl From<u8> for Tone {
+  fn from(value: u8) -> Self {
+    match value {
+      0 => Self::Shadow,
+      1 => Self::Midtone,
+      2 => Self::Highlight,
+      3 => Self::All,
+      _ => Self::Unknown(value),
+    }
+  }
+}
+
+impl From<Tone> for u8 {
+  fn from(value: Tone) -> Self {
+    match value {
+      Tone::Shadow => 0,
+      Tone::Midtone => 1,
+      Tone::Highlight => 2,
+      Tone::All => 3,
+      Tone::Unknown(v) => v,
+    }
+  }
+}
+
+impl Marshal for Tone {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let v: u8 = (*self).into();
+    v.marshal(w)?;
+
+    Ok(())
+  }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorSpace {
+  HSV,
+  HSL,
+  RGB,
+  Unknown(u8),
+}
+
+impl From<u8> for ColorSpace {
+  fn from(value: u8) -> Self {
+    match value {
+      0 => Self::HSV,
+      1 => Self::HSL,
+      2 => Self::RGB,
+      _ => Self::Unknown(value),
+    }
+  }
+}
+
+impl From<ColorSpace> for u8 {
+  fn from(value: ColorSpace) -> Self {
+    match value {
+      ColorSpace::HSV => 0,
+      ColorSpace::HSL => 1,
+      ColorSpace::RGB => 2,
+      ColorSpace::Unknown(v) => v,
+    }
+  }
+}
+
+impl Marshal for ColorSpace {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let v: u8 = (*self).into();
+    v.marshal(w)?;
+
+    Ok(())
+  }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Axis {
+  Vertical,
+  Horizontal,
+  Unknown(u8),
+}
+
+impl From<u8> for Axis {
+  fn from(value: u8) -> Self {
+    match value {
+      0 => Self::Vertical,
+      1 => Self::Horizontal,
+      _ => Self::Unknown(value),
+    }
+  }
+}
+
+impl From<Axis> for u8 {
+  fn from(value: Axis) -> Self {
+    match value {
+      Axis::Vertical => 0,
+      Axis::Horizontal => 1,
+      Axis::Unknown(v) => v,
+    }
+  }
+}
+
+impl Marshal for Axis {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let v: u8 = (*self).into();
+    v.marshal(w)?;
+
+    Ok(())
+  }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Curve {
+  Linear,
+  EaseIn,
+  EaseOut,
+  EaseInOut,
+  Bouncy,
+  Smooth,
+  Snappy,
+  Unknown(u16),
+}
+
+impl Curve {
+  pub fn calc(&self, t: f64) -> f64 {
+    match self {
+      Self::Linear => t,
+      Self::EaseIn => Self::cubic_bezier(t, 0.42, 0.0, 1.0, 1.0),
+      Self::EaseOut => Self::cubic_bezier(t, 0.0, 0.0, 0.58, 1.0),
+      Self::EaseInOut => Self::cubic_bezier(t, 0.42, 0.0, 0.58, 1.0),
+      Self::Bouncy => 1.0 - (-7.0 * t).exp() * (12.0 * t).cos(),
+      Self::Smooth => 1.0 - (-6.0 * t).exp() * (1.0 + 6.0 * t),
+      Self::Snappy => 1.0 - (-9.0 * t).exp() * (18.0 * t).cos(),
+      Self::Unknown(_) => t,
+    }
+  }
+
+  fn bezier_coordinate(u: f64, p1: f64, p2: f64) -> f64 {
+    let v = 1. - u;
+
+    3. * v.powf(2.) * u * p1 + 3. * v * u.powf(2.) * p2 + u.powf(3.)
+  }
+
+  fn cubic_bezier(t: f64, x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
+    let t = t.clamp(0., 1.);
+
+    if t == 0. || t == 1. {
+      return t;
+    }
+
+    let mut low = 0.;
+    let mut high = 1.;
+
+    for _ in 0..40 {
+      let u = (low + high) * 0.5;
+      let x = Self::bezier_coordinate(u, x1, x2);
+
+      if x < t {
+        low = u;
+      } else {
+        high = u;
+      }
+    }
+
+    let u = (low + high) * 0.5;
+    Self::bezier_coordinate(u, y1, y2)
+  }
+}
+
+impl From<u16> for Curve {
+  fn from(value: u16) -> Self {
+    match value {
+      0 => Self::Linear,
+      1 => Self::EaseIn,
+      2 => Self::EaseOut,
+      3 => Self::EaseInOut,
+      4 => Self::Bouncy,
+      5 => Self::Smooth,
+      6 => Self::Snappy,
+      _ => Self::Unknown(value),
+    }
+  }
+}
+
+impl From<Curve> for u16 {
+  fn from(value: Curve) -> Self {
+    match value {
+      Curve::Linear => 0,
+      Curve::EaseIn => 1,
+      Curve::EaseOut => 2,
+      Curve::EaseInOut => 3,
+      Curve::Bouncy => 4,
+      Curve::Smooth => 5,
+      Curve::Snappy => 6,
+      Curve::Unknown(v) => v,
+    }
+  }
+}
+
+impl Marshal for Curve {
+  fn marshal<W: Write>(&self, w: &mut W) -> PMResult<()> {
+    let v: u16 = (*self).into();
     v.marshal(w)?;
 
     Ok(())
