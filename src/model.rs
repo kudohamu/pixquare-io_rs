@@ -3530,7 +3530,7 @@ impl ModelMarshal for MagicLayer {
     self.color.marshal(w)?;
     self.fxs.marshal(w)?;
     self.magics.marshal(w)?;
-    self.remaining_data.marshal(w)?;
+    TypeN::new(&self.remaining_data).marshal(w)?;
 
     let data_size = w.written_bytes();
     Ok(MagicLayerHeader {
