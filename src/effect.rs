@@ -31,8 +31,8 @@ pub(crate) fn move_pixel_from_index(
   let source_x = (source_index % width) as i64;
   let source_y = (source_index / width) as i64;
 
-  let dest_x = source_x + offset_x as i64;
-  let dest_y = source_y + offset_y as i64;
+  let dest_x = source_x + offset_x;
+  let dest_y = source_y + offset_y;
 
   if dest_x < 0 || dest_x > width as i64 - 1 || dest_y < 0 || dest_y > height as i64 - 1 {
     return;

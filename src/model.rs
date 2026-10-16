@@ -2351,7 +2351,7 @@ impl MagicPropertyColorAdjustmentContent {
     target.fill(ArgbColor::TRANSPARENT);
 
     let angle_interpolate = |angle: f32, v: f32, progress: f32| {
-      (angle + v * std::f32::consts::TAU * progress as f32).rem_euclid(std::f32::consts::TAU)
+      (angle + v * std::f32::consts::TAU * progress).rem_euclid(std::f32::consts::TAU)
     };
     let component_interpolate = |c: f32, v: f32, progress: f32| {
       if v < 0. {
@@ -2374,7 +2374,7 @@ impl MagicPropertyColorAdjustmentContent {
       match self.color_space {
         ColorSpace::RGB => {
           let straight = pixel.to_straight_alpha().to_color();
-          let mut next_color = straight.clone();
+          let mut next_color = straight;
           next_color.r = component_interpolate(straight.r, self.first_value, progress as f32);
           next_color.g = component_interpolate(straight.g, self.second_value, progress as f32);
           next_color.b = component_interpolate(straight.b, self.third_value, progress as f32);
@@ -2388,7 +2388,7 @@ impl MagicPropertyColorAdjustmentContent {
         }
         ColorSpace::HSV => {
           let hsv = pixel.to_hsva();
-          let mut next_color = hsv.clone();
+          let mut next_color = hsv;
           next_color.h = angle_interpolate(hsv.h, self.first_value, progress as f32);
           next_color.s = component_interpolate(hsv.s, self.second_value, progress as f32);
           next_color.v = component_interpolate(hsv.v, self.third_value, progress as f32);
@@ -2398,7 +2398,7 @@ impl MagicPropertyColorAdjustmentContent {
         }
         ColorSpace::HSL => {
           let hsl = pixel.to_hsla();
-          let mut next_color = hsl.clone();
+          let mut next_color = hsl;
           next_color.h = angle_interpolate(hsl.h, self.first_value, progress as f32);
           next_color.s = component_interpolate(hsl.s, self.second_value, progress as f32);
           next_color.l = component_interpolate(hsl.l, self.third_value, progress as f32);
@@ -5181,7 +5181,7 @@ impl<'a> Artwork {
           let scaled_y = original_y * self.pixel_size.height as usize + offset_y;
           let scaled_index = scaled_y * scaled_width + scaled_x;
 
-          scaled_image[scaled_index] = pixel.clone();
+          scaled_image[scaled_index] = *pixel;
         }
       }
     }

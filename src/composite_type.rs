@@ -139,7 +139,7 @@ impl ArgbColor {
     self.a = (self.a as f32 * alpha).round().clamp(0.0, 255.0) as u8;
   }
 
-  pub(crate) fn to_hsva(&self) -> HsvaColor {
+  pub(crate) fn to_hsva(self) -> HsvaColor {
     let straight = self.to_straight_alpha().to_color();
 
     let c_max = straight.r.max(straight.g).max(straight.b);
@@ -167,7 +167,7 @@ impl ArgbColor {
     }
   }
 
-  pub(crate) fn to_hsla(&self) -> HslaColor {
+  pub(crate) fn to_hsla(self) -> HslaColor {
     let straight = self.to_straight_alpha().to_color();
 
     let c_max = straight.r.max(straight.g).max(straight.b);
