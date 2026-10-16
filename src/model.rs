@@ -4994,6 +4994,12 @@ impl<'a> Artwork {
       .map(|layer| layer.frames.as_slice())
       .or_else(|| {
         self
+          .magic_layers
+          .first()
+          .map(|layer| layer.frames.as_slice())
+      })
+      .or_else(|| {
+        self
           .tilemap_layers
           .first()
           .map(|layer| layer.frames.as_slice())
@@ -5008,8 +5014,11 @@ impl<'a> Artwork {
   pub fn frames_len(&self) -> usize {
     let layer_frames_len = self.layers.first().map_or(0, |l| l.frames.len());
     let tilemap_layer_frames_len = self.tilemap_layers.first().map_or(0, |l| l.frames.len());
+    let magic_layer_frames_len = self.magic_layers.first().map_or(0, |l| l.frames.len());
 
-    layer_frames_len.max(tilemap_layer_frames_len)
+    layer_frames_len
+      .max(tilemap_layer_frames_len)
+      .max(magic_layer_frames_len)
   }
 
   /// Returns size of the rendering image, accounting for pixel size and other factors.
