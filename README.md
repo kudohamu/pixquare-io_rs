@@ -1,5 +1,9 @@
 # pixquare-io
 
+
+[![CI](https://img.shields.io/github/actions/workflow/status/kudohamu/pixquare-io_rs/ci.yaml?logo=github&label=CI)](https://github.com/kudohamu/pixquare-io_rs/actions/workflows/ci.yaml)
+[![Latest Version](https://img.shields.io/crates/v/pixquare-io.svg)](https://crates.io/crates/pixquare-io)
+
 A Crate for reading/writing [Pixquare](https://www.pixquare.art/) files.  
 [Pixquare](https://www.pixquare.art/) is the awesome and feature-rich pixel art editor.
 
